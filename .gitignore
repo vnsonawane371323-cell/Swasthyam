@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+
+# Native builds
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# Local env files
+.env*.local
+.env
+
+# TypeScript
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+coverage/
+
+# Logs
+logs
+*.log
+
+# Build
+build/
+android/
+ios/
+
+# Data folder (oil datasets, recipes) - only root level, not src/data
+/data/
+
+# Recipe controller and routes
+backend/controllers/recipeController.js
+backend/routes/recipes.js
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pkl
+
+# Backend
+backend/node_modules/

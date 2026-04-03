@@ -1,0 +1,198 @@
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          OPENCV BARCODE SCANNER INTEGRATION                  │
+│                              SwasthTel App Architecture                      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                                  MOBILE APP                                   │
+│                                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                         MobileHome.tsx                               │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐             │   │
+│  │  │  Log Oil     │  │  Oil Scan    │  │  Learning    │             │   │
+│  │  │   Button     │  │   Button     │  │   Modules    │             │   │
+│  │  └──────────────┘  └──────┬───────┘  └──────────────┘             │   │
+│  └──────────────────────────│──────────────────────────────────────────┘   │
+│                              │ onPress={handleScanFood}                     │
+│                              ▼                                               │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │              BarcodeScannerScreen.tsx                               │    │
+│  │                                                                      │    │
+│  │  ┌────────────┐  ┌────────────┐  ┌──────────────┐                │    │
+│  │  │ Take Photo │  │   Upload   │  │    Manual    │                │    │
+│  │  │   Camera   │  │   Gallery  │  │    Entry     │                │    │
+│  │  └─────┬──────┘  └─────┬──────┘  └──────┬───────┘                │    │
+│  │        │                │                │                         │    │
+│  │        └────────────────┴────────────────┘                         │    │
+│  │                         │                                          │    │
+│  │                         ▼                                          │    │
+│  │              ┌─────────────────────┐                              │    │
+│  │              │  barcodeService.ts  │                              │    │
+│  │              │                     │                              │    │
+│  │              │ • scanBarcodeImage()│                              │    │
+│  │              │ • lookupBarcode()   │                              │    │
+│  │              │ • searchProducts()  │                              │    │
+│  │              └──────────┬──────────┘                              │    │
+│  └─────────────────────────│─────────────────────────────────────────┘    │
+│                             │                                              │
+│                             │ API Request with Auth Token                  │
+│                             │                                              │
+└─────────────────────────────┼──────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             BACKEND SERVER                                   │
+│                          (Express.js + Node.js)                             │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                          server.js                                    │  │
+│  │  Routes: /api/barcode/*                                              │  │
+│  │  Middleware: auth, multer, cors, helmet                              │  │
+│  └───────────────────────────────┬──────────────────────────────────────┘  │
+│                                  │                                          │
+│                                  ▼                                          │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │                     routes/barcode.js                                 │  │
+│  │                                                                        │  │
+│  │  POST   /api/barcode/scan              [multer upload]               │  │
+│  │  GET    /api/barcode/lookup/:barcode   [protected]                   │  │
+│  │  GET    /api/barcode/search?q=...      [protected]                   │  │
+│  └───────────────────────────┬──────────────────────────────────────────┘  │
+│                               │                                             │
+│                               ▼                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │              controllers/barcodeScanController.js                     │  │
+│  │                                                                        │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐   │  │
+│  │  │ scanBarcodeImage()                                            │   │  │
+│  │  │  1. Receive image buffer                                      │   │  │
+│  │  │  2. Process with Sharp (resize, optimize)                     │   │  │
+│  │  │  3. Decode barcode (jsQR → Quagga fallback)                  │   │  │
+│  │  │  4. Call lookupProduct()                                      │   │  │
+│  │  └──────────────────────────────────────────────────────────────┘   │  │
+│  │                                                                        │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐   │  │
+│  │  │ lookupBarcode()                                               │   │  │
+│  │  │  1. Validate barcode format                                   │   │  │
+│  │  │  2. Call lookupProduct()                                      │   │  │
+│  │  └──────────────────────────────────────────────────────────────┘   │  │
+│  │                                                                        │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐   │  │
+│  │  │ lookupProduct()                                               │   │  │
+│  │  │  1. Query OpenFoodFacts API                                   │   │  │
+│  │  │  2. Extract nutritional data                                  │   │  │
+│  │  │  3. Analyze oil content                                       │   │  │
+│  │  │  4. Format response                                           │   │  │
+│  │  └──────────────────┬───────────────────────────────────────────┘   │  │
+│  └─────────────────────┼──────────────────────────────────────────────┘  │
+│                        │                                                   │
+└────────────────────────┼───────────────────────────────────────────────────┘
+                         │
+                         ▼ HTTP GET Request
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         OPENFOODFACTS API                                    │
+│                  https://world.openfoodfacts.org/api                        │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Product Database (Millions of Products)                             │  │
+│  │                                                                        │  │
+│  │  • Product Names & Brands                                            │  │
+│  │  • Nutritional Information (per 100g/100ml)                          │  │
+│  │  • Ingredients Lists                                                 │  │
+│  │  • Additives & Allergens                                             │  │
+│  │  • Health Scores (Nutriscore, NOVA, Ecoscore)                       │  │
+│  │  • Product Images                                                    │  │
+│  │  • Categories & Labels                                               │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└──────────────────────────────────────────┬───────────────────────────────────┘
+                                           │
+                                           │ JSON Response
+                                           ▼
+                        ┌─────────────────────────────────┐
+                        │      Response Processing         │
+                        │                                  │
+                        │  1. Parse product data           │
+                        │  2. Extract nutrients            │
+                        │  3. Calculate oil content        │
+                        │  4. Categorize (High/Low/etc)   │
+                        │  5. Return formatted data        │
+                        └──────────────┬──────────────────┘
+                                       │
+                                       │ JSON Response
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          RESPONSE TO MOBILE APP                              │
+│                                                                              │
+│  {                                                                           │
+│    "success": true,                                                          │
+│    "data": {                                                                 │
+│      "barcode": "5449000000996",                                            │
+│      "product_name": "Coca-Cola",                                           │
+│      "brand": "Coca-Cola",                                                  │
+│      "quantity": "330ml",                                                   │
+│      "oil_content": "Very low oil content: 0g per 100g",                   │
+│      "nutritional_info": {                                                  │
+│        "energy_kcal": 42,                                                   │
+│        "fat": 0,                                                            │
+│        "saturated_fat": 0,                                                  │
+│        "carbohydrates": 10.6,                                               │
+│        "sugars": 10.6,                                                      │
+│        "proteins": 0,                                                       │
+│        "salt": 0,                                                           │
+│        "unit": "100g"                                                       │
+│      },                                                                      │
+│      "nutriscore_grade": "e",                                               │
+│      "nova_group": 4,                                                       │
+│      "image_url": "https://..."                                             │
+│    }                                                                         │
+│  }                                                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          KEY TECHNOLOGIES USED                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Frontend:                           Backend:                               │
+│  • React Native / Expo               • Node.js / Express.js                │
+│  • TypeScript                        • JavaScript                          │
+│  • expo-image-picker                 • Multer (file upload)                │
+│  • AsyncStorage                      • Sharp (image processing)            │
+│                                      • jsQR (QR decoding)                   │
+│                                      • Quagga (barcode decoding)            │
+│  External APIs:                      • Jimp (image manipulation)           │
+│  • OpenFoodFacts                     • Axios (HTTP client)                 │
+│    (Product Database)                                                        │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            DATA FLOW SUMMARY                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. User taps "Oil Scan" → Opens BarcodeScannerScreen                      │
+│  2. User takes photo or uploads image                                       │
+│  3. Image sent to backend via POST /api/barcode/scan                       │
+│  4. Backend processes image with Sharp                                      │
+│  5. Backend decodes barcode using jsQR/Quagga                              │
+│  6. Backend queries OpenFoodFacts API with barcode                         │
+│  7. OpenFoodFacts returns product data                                      │
+│  8. Backend analyzes oil content from fat values                           │
+│  9. Backend formats and returns complete response                          │
+│  10. Frontend displays product info to user                                 │
+│  11. User can use data for oil tracking                                     │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        OIL CONTENT CATEGORIZATION                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Based on fat content per 100g:                                             │
+│                                                                              │
+│  • High (>50g)        → Cooking oils, ghee, butter                         │
+│  • Moderate (20-50g)  → Nuts, chips, fried foods                           │
+│  • Low (5-20g)        → Dairy products, baked goods                        │
+│  • Very Low (0-5g)    → Most beverages, vegetables, grains                 │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
