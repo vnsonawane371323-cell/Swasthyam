@@ -67,7 +67,7 @@ class SwasthnaniService {
       if (userHealthStatus === 'fatty-liver' || userHealthStatus === 'high-cholesterol') {
         message.encouragement = 'For your health, please stick to lighter cooking methods for upcoming meals.';
       } else {
-        message.encouragement = 'You're doing well! Just be mindful of remaining meals.';
+        message.encouragement = "You're doing well! Just be mindful of remaining meals.";
       }
     } else if (consumedPercent >= 70) {
       // Getting close
