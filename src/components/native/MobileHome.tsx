@@ -147,32 +147,41 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   const selectedDayEntry = entries.find(
     (item: any) => item.date === new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short' })
   );
-  const consumedCaloriesFromEntries = selectedDayEntry?.calories || consumedCalories || 0;
+  let consumedCaloriesFromEntries = selectedDayEntry?.calories || consumedCalories || 0;
   const resolvedTotalConsumedCal = Math.max(0, Math.round(consumedCaloriesFromEntries));
   
+  // IMPORTANT: Total calories must always be >= Oil calories
+  // If total < oil, set total = oil (oil is a subset of total)
+  const finalTotalConsumedCal = Math.max(resolvedTotalConsumedCal, resolvedOilConsumedCal);
+  const finalOilConsumedCal = Math.min(resolvedOilConsumedCal, finalTotalConsumedCal);
+  
+  // Oil fill percent against user's daily oil limit
   const oilFillPercent =
     effectiveDailyLimitCal > 0
-      ? Math.min((resolvedOilConsumedCal / effectiveDailyLimitCal) * 100, 100)
+      ? Math.min((finalOilConsumedCal / effectiveDailyLimitCal) * 100, 100)
       : 0;
   
-  // Total calories fill percent = (consumed / goal) * 100, capped at 100
+  // Total calories fill percent = (total consumed / goal) * 100, capped at 100
   const totalCaloriesFillPercent =
     totalCalories > 0
-      ? Math.min(100, (resolvedTotalConsumedCal / totalCalories) * 100)
+      ? Math.min(100, (finalTotalConsumedCal / totalCalories) * 100)
       : 0;
   
-  // Oil percent = (oilCalories / totalConsumed) * 100
+  // Oil percent as portion of total consumed = (oil / total) * 100
   const oilPercent =
-    resolvedTotalConsumedCal > 0
-      ? (resolvedOilConsumedCal / resolvedTotalConsumedCal) * 100
+    finalTotalConsumedCal > 0
+      ? (finalOilConsumedCal / finalTotalConsumedCal) * 100
       : 0;
 
-  console.log('📊 [MobileHome] Updated Calculation:');
+  console.log('📊 [MobileHome] Updated Calculation with constraints:');
   console.log('  - totalCalories (goal):', totalCalories);
-  console.log('  - consumedCaloriesFromEntries:', consumedCaloriesFromEntries);
-  console.log('  - resolvedTotalConsumedCal:', resolvedTotalConsumedCal);
-  console.log('  - totalCaloriesFillPercent:', totalCaloriesFillPercent, '%');
-  console.log('  - oilPercent:', oilPercent, '%');
+  console.log('  - resolvedTotalConsumedCal (before constraint):', resolvedTotalConsumedCal);
+  console.log('  - resolvedOilConsumedCal:', resolvedOilConsumedCal);
+  console.log('  - finalTotalConsumedCal (after constraint):', finalTotalConsumedCal);
+  console.log('  - finalOilConsumedCal:', finalOilConsumedCal);
+  console.log('  - totalCaloriesFillPercent:', totalCaloriesFillPercent.toFixed(2), '%');
+  console.log('  - oilFillPercent:', oilFillPercent.toFixed(2), '%');
+  console.log('  - oilPercent (of total):', oilPercent.toFixed(2), '%');
   const weeklyMaxCalories = weeklyData.reduce((max, point) => Math.max(max, point.calories), 0);
   const chartMaxCal = Math.max(effectiveDailyLimitCal * 1.2, weeklyMaxCalories * 1.1, 1);
 
@@ -628,7 +637,7 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
           <View style={styles.usageHeader}>
             <Text style={styles.usageTitle}>{t('home.todaysOilUsage')}</Text>
             <Text style={styles.usageValue}>
-              {`${resolvedOilConsumedCal} / ${effectiveDailyLimitCal} cal`}
+              {`${finalOilConsumedCal} / ${effectiveDailyLimitCal} cal`}
             </Text>
           </View>
           <View style={styles.progressBarContainer}>
@@ -655,7 +664,7 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
           <View style={styles.caloriesBarHeader}>
             <Text style={styles.caloriesBarLabel}>Total Calories</Text>
             <Text style={styles.caloriesBarValue}>
-              {`${resolvedTotalConsumedCal} / ${totalCalories} cal`}
+              {`${finalTotalConsumedCal} / ${totalCalories} cal`}
             </Text>
           </View>
           <View style={styles.caloriesProgressBarContainer}>
