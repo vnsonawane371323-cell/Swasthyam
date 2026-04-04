@@ -103,7 +103,7 @@ export interface FoodNutritionData {
 
 class ApiService {
   private token: string | null = null;
-  private timeout: number = 90000; // 90 second timeout for report upload + AI analysis
+  private timeout: number = 180000; // 180 second timeout for heavy report upload + AI analysis
 
   setToken(token: string | null) {
     this.token = token;

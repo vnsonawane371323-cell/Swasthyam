@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,11 +22,42 @@ export function OilInsightsScreen({ onComplete, onBack, language, userData }: Oi
   const [idealConsumption, setIdealConsumption] = useState(0);
   const [currentEstimate, setCurrentEstimate] = useState(0);
   const [reductionNeeded, setReductionNeeded] = useState(0);
+  const [typedCalculationText, setTypedCalculationText] = useState('');
+  const [showFinalCalorieValues, setShowFinalCalorieValues] = useState(false);
+
+  const basicInfo = userData?.screen1 || {};
+  const bmr = Number(basicInfo.bmr || 0);
+  const activityFactor = Number(basicInfo.activityFactor || 0);
+  const adjustedTdee = Number(basicInfo.adjustedTdee || 0);
+  const tdee = Number(basicInfo.tdee || 0);
+  const totalCalories = adjustedTdee > 0 ? adjustedTdee : tdee > 0 ? tdee : 2000;
+  const oilCalorieTarget = Math.round(totalCalories * 0.07);
+  const oilGramTarget = Math.round((oilCalorieTarget / 9) * 10) / 10;
+
+  const calculationScript = useMemo(() => {
+    const totalSource = adjustedTdee > 0 ? 'Adjusted TDEE' : tdee > 0 ? 'TDEE' : 'Default baseline';
+    const tdeeFormulaText = bmr > 0 && activityFactor > 0
+      ? `TDEE formula used: TDEE = BMR x Activity Factor = ${Math.round(bmr)} x ${activityFactor.toFixed(2)} = ${Math.round(bmr * activityFactor)} kcal/day`
+      : 'TDEE formula used: TDEE = BMR x Activity Factor (BMR/activity factor not fully available in profile)';
+    const scriptLines = [
+      tdeeFormulaText,
+      `Total calories used for planning = ${totalSource} = ${Math.round(totalCalories)} kcal/day`,
+      `Oil calorie budget formula: Total Calories x 7%`,
+      `Oil calorie budget = ${Math.round(totalCalories)} x 0.07 = ${oilCalorieTarget} kcal/day`,
+      `Oil grams formula: Oil Calories / 9`,
+      `Oil grams = ${oilCalorieTarget} / 9 = ${oilGramTarget} g/day`,
+      `Assumption: According to ICMR guidance, visible fats are ideally about 7% of total calories.`,
+      `Assumption: 1 g fat = 9 kcal (standard nutrition conversion).`,
+      `Assumption: If TDEE is unavailable, a 2000 kcal/day baseline is used.`,
+      `Final Daily Oil Goal = ${Math.round(oilGramTarget)} g/day`,
+    ];
+
+    return scriptLines.join('\n');
+  }, [adjustedTdee, tdee, bmr, activityFactor, totalCalories, oilCalorieTarget, oilGramTarget]);
 
   useEffect(() => {
     // Calculate ideal oil consumption based on user data
     const calculateIdealConsumption = () => {
-      const basicInfo = userData?.screen1 || {};
       const medicalHistory = userData?.screen2 || {};
       const eatingHabits = userData?.screen3 || {};
 
@@ -89,6 +120,24 @@ export function OilInsightsScreen({ onComplete, onBack, language, userData }: Oi
     setDailyOilGoal(ideal.toString());
   }, [userData]);
 
+  useEffect(() => {
+    setTypedCalculationText('');
+    setShowFinalCalorieValues(false);
+
+    let index = 0;
+    const intervalId = setInterval(() => {
+      index += 1;
+      setTypedCalculationText(calculationScript.slice(0, index));
+
+      if (index >= calculationScript.length) {
+        clearInterval(intervalId);
+        setShowFinalCalorieValues(true);
+      }
+    }, 18);
+
+    return () => clearInterval(intervalId);
+  }, [calculationScript]);
+
   const handleComplete = () => {
     onComplete();
   };
@@ -136,6 +185,34 @@ export function OilInsightsScreen({ onComplete, onBack, language, userData }: Oi
             personalized to help you achieve optimal health while reducing oil consumption by 10%.
           </Text>
         </LinearGradient>
+
+        <View style={styles.calculationCard}>
+          <View style={styles.calculationHeader}>
+            <Ionicons name="flash" size={20} color="#1b4a5a" />
+            <Text style={styles.calculationTitle}>Calculation Playback</Text>
+          </View>
+
+          <View style={styles.calculationConsole}>
+            <Text style={styles.calculationText}>{typedCalculationText}</Text>
+            {!showFinalCalorieValues && <Text style={styles.cursor}>|</Text>}
+          </View>
+
+          {showFinalCalorieValues && (
+            <View style={styles.finalValuesRow}>
+              <View style={styles.finalValueCard}>
+                <Text style={styles.finalValueLabel}>Total Calories</Text>
+                <Text style={styles.finalValueNumber}>{Math.round(totalCalories)}</Text>
+                <Text style={styles.finalValueUnit}>kcal/day</Text>
+              </View>
+
+              <View style={styles.finalValueCard}>
+                <Text style={styles.finalValueLabel}>Oil Calories</Text>
+                <Text style={styles.finalValueNumber}>{oilCalorieTarget}</Text>
+                <Text style={styles.finalValueUnit}>kcal/day</Text>
+              </View>
+            </View>
+          )}
+        </View>
 
         {/* Current vs Ideal */}
         <View style={styles.statsGrid}>
@@ -376,6 +453,77 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     lineHeight: 22,
     opacity: 0.9,
+  },
+  calculationCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#d9e8ee',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  calculationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  calculationTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#040707',
+  },
+  calculationConsole: {
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minHeight: 128,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 12,
+  },
+  calculationText: {
+    color: '#6b7280',
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: 'monospace',
+    flex: 1,
+  },
+  cursor: {
+    color: '#6b7280',
+    fontSize: 14,
+    marginLeft: 2,
+  },
+  finalValuesRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  finalValueCard: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#d6e7ed',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    backgroundColor: '#f4fbff',
+  },
+  finalValueLabel: {
+    fontSize: 12,
+    color: '#4b6470',
+    marginBottom: 4,
+  },
+  finalValueNumber: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0e3a49',
+  },
+  finalValueUnit: {
+    fontSize: 11,
+    color: '#4b6470',
+    marginTop: 2,
   },
   statsGrid: {
     flexDirection: 'row',
