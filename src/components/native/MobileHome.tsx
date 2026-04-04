@@ -270,24 +270,13 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
       }
 
       if (todayResponse?.success && todayResponse.data) {
-        const oilTotal = Number(todayResponse.data.dailyOilCalories);
-        const fallbackOil = Number(todayResponse.data.dailyTotal) * 9;
+        const totalCalories = Number(todayResponse.data.dailyTotalCalories) || 0;
+        const oilTotal = Number(todayResponse.data.dailyOilCalories) || 0;
 
-        // Calculate total calories by summing rawKcal from all entries
-        const entries = Array.isArray(todayResponse.data.entries) ? todayResponse.data.entries : [];
-        const totalCaloriesFromEntries = entries.reduce((sum, entry) => {
-          const rawKcal = Number(entry.rawKcal) || 0;
-          return sum + (Number.isFinite(rawKcal) && rawKcal >= 0 ? rawKcal : 0);
-        }, 0);
-
-        const resolvedOilConsumed = Number.isFinite(oilTotal) && oilTotal >= 0
-          ? oilTotal
-          : (Number.isFinite(fallbackOil) && fallbackOil >= 0 ? fallbackOil : 0);
-
-        setConsumedCalories(Math.round(totalCaloriesFromEntries));
+        setConsumedCalories(Math.round(totalCalories));
 
         // Oil bar should reflect oil calories only
-        setDailyConsumption(Math.max(0, resolvedOilConsumed) / 9);
+        setDailyConsumption(Math.max(0, oilTotal) / 9);
       }
     } catch (error) {
       console.log('Failed to fetch calorie targets:', error);
