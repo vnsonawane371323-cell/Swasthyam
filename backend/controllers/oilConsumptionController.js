@@ -388,7 +388,7 @@ exports.getConsumption = async (req, res, next) => {
         entries,
         dailyTotal: dailyTotal.totalOil,
         dailyTotalCalories: dailyTotal.totalRawKcal,
-        dailyOilCalories: dailyTotal.totalOil,
+        dailyOilCalories: dailyTotal.totalRawKcal,
         dailyEffectiveCalories: dailyTotal.totalEffKcal,
         pagination: {
           total,
@@ -436,7 +436,7 @@ exports.getTodayConsumption = async (req, res, next) => {
       entries,
       dailyTotal: dailyTotal.totalOil,
       dailyTotalCalories: dailyTotal.totalRawKcal,
-      dailyOilCalories: dailyTotal.totalOil,
+      dailyOilCalories: dailyTotal.totalRawKcal,
       dailyEffectiveCalories: dailyTotal.totalEffKcal,
       count: entries.length
     };
