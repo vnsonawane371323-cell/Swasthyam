@@ -21,6 +21,14 @@ interface BarcodeResult {
   barcode: string;
   product_name: string;
   brand: string;
+  oil_type?: string;
+  oil_brand?: string;
+  swasth_index?: number;
+  recommendation_summary?: string;
+  better_options?: Array<{
+    name: string;
+    why_prefer: string;
+  }>;
   quantity: string;
   oil_content?: string;
   nutritional_info?: {
@@ -43,6 +51,14 @@ export function BarcodeScannerScreen() {
   const [error, setError] = useState<string | null>(null);
   const [manualBarcode, setManualBarcode] = useState('');
   const [showManualEntry, setShowManualEntry] = useState(false);
+
+  const getSwasthIndexColor = (value?: number) => {
+    if (typeof value !== 'number') return '#6b7280';
+    if (value <= 30) return '#dc2626';
+    if (value <= 55) return '#d97706';
+    if (value <= 75) return '#16a34a';
+    return '#0f766e';
+  };
 
   useEffect(() => {
     requestPermissions();
@@ -153,6 +169,11 @@ export function BarcodeScannerScreen() {
         barcode: response.data.barcode,
         product_name: response.data.product_name,
         brand: response.data.brand,
+        oil_type: response.data.oil_type || undefined,
+        oil_brand: response.data.oil_brand || undefined,
+        swasth_index: typeof response.data.swasth_index === 'number' ? response.data.swasth_index : undefined,
+        recommendation_summary: response.data.recommendation_summary || undefined,
+        better_options: response.data.better_options || [],
         quantity: response.data.quantity,
         oil_content: response.data.oil_content,
         nutritional_info: response.data.nutritional_info ? {
@@ -225,6 +246,11 @@ export function BarcodeScannerScreen() {
         barcode: response.data.barcode,
         product_name: response.data.product_name,
         brand: response.data.brand,
+        oil_type: response.data.oil_type || undefined,
+        oil_brand: response.data.oil_brand || undefined,
+        swasth_index: typeof response.data.swasth_index === 'number' ? response.data.swasth_index : undefined,
+        recommendation_summary: response.data.recommendation_summary || undefined,
+        better_options: response.data.better_options || [],
         quantity: response.data.quantity,
         oil_content: response.data.oil_content,
         nutritional_info: response.data.nutritional_info ? {
@@ -360,6 +386,63 @@ export function BarcodeScannerScreen() {
                   <Text style={styles.oilTitle}>Oil Content</Text>
                 </View>
                 <Text style={styles.oilValue}>{scannedData.oil_content}</Text>
+              </View>
+            )}
+
+            {(scannedData.oil_type || scannedData.oil_brand || typeof scannedData.swasth_index === 'number') && (
+              <View style={styles.insightCard}>
+                <View style={styles.insightHeader}>
+                  <Ionicons name="analytics" size={22} color="#1b4a5a" />
+                  <Text style={styles.insightTitle}>Gemini Oil Insights</Text>
+                </View>
+
+                {scannedData.oil_type && (
+                  <View style={styles.insightRow}>
+                    <Text style={styles.insightLabel}>Oil Type</Text>
+                    <Text style={styles.insightValue}>{scannedData.oil_type}</Text>
+                  </View>
+                )}
+
+                {scannedData.oil_brand && (
+                  <View style={styles.insightRow}>
+                    <Text style={styles.insightLabel}>Oil Brand</Text>
+                    <Text style={styles.insightValue}>{scannedData.oil_brand}</Text>
+                  </View>
+                )}
+
+                {typeof scannedData.swasth_index === 'number' && (
+                  <View style={styles.swasthIndexRow}>
+                    <Text style={styles.insightLabel}>Swasth Index</Text>
+                    <View
+                      style={[
+                        styles.swasthIndexPill,
+                        { backgroundColor: getSwasthIndexColor(scannedData.swasth_index) }
+                      ]}
+                    >
+                      <Text style={styles.swasthIndexText}>{Math.round(scannedData.swasth_index)}/100</Text>
+                    </View>
+                  </View>
+                )}
+
+                {scannedData.recommendation_summary && (
+                  <Text style={styles.recommendationSummary}>{scannedData.recommendation_summary}</Text>
+                )}
+              </View>
+            )}
+
+            {!!scannedData.better_options?.length && (
+              <View style={styles.betterOptionsCard}>
+                <View style={styles.insightHeader}>
+                  <Ionicons name="leaf" size={22} color="#166534" />
+                  <Text style={styles.betterOptionsTitle}>Better Options</Text>
+                </View>
+
+                {scannedData.better_options.map((option, index) => (
+                  <View key={`${option.name}-${index}`} style={styles.betterOptionItem}>
+                    <Text style={styles.betterOptionName}>{option.name}</Text>
+                    <Text style={styles.betterOptionReason}>{option.why_prefer}</Text>
+                  </View>
+                ))}
               </View>
             )}
 
@@ -720,6 +803,96 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#07A996',
+  },
+  insightCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+  },
+  insightHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    gap: 8,
+  },
+  insightTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1b4a5a',
+  },
+  insightRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 12,
+  },
+  insightLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  insightValue: {
+    fontSize: 15,
+    color: '#1f2937',
+    fontWeight: '700',
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  swasthIndexRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  swasthIndexPill: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  swasthIndexText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  recommendationSummary: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#334155',
+    lineHeight: 20,
+  },
+  betterOptionsCard: {
+    backgroundColor: '#f0fdf4',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  betterOptionsTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  betterOptionItem: {
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dcfce7',
+  },
+  betterOptionName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#166534',
+    marginBottom: 4,
+  },
+  betterOptionReason: {
+    fontSize: 13,
+    color: '#14532d',
+    lineHeight: 18,
   },
   nutritionCard: {
     backgroundColor: '#ffffff',

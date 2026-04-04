@@ -18,6 +18,14 @@ interface BarcodeResponse {
     barcode: string;
     product_name: string;
     brand: string;
+    oil_type?: string | null;
+    oil_brand?: string | null;
+    swasth_index?: number | null;
+    recommendation_summary?: string | null;
+    better_options?: Array<{
+      name: string;
+      why_prefer: string;
+    }>;
     quantity: string;
     categories: string;
     ingredients_text: string;
@@ -201,6 +209,19 @@ export const scanBarcodeImage = async (imageUri: string): Promise<BarcodeRespons
           barcode: detectedBarcode,
           product_name: aiData.product_name || 'Unknown Product',
           brand: aiData.brand || 'Unknown Brand',
+          oil_type: aiData.oil_type || aiData.product_type || null,
+          oil_brand: aiData.oil_brand || aiData.brand || null,
+          swasth_index: Number.isFinite(Number(aiData.swasth_index)) ? Number(aiData.swasth_index) : null,
+          recommendation_summary: aiData.recommendation_summary || null,
+          better_options: Array.isArray(aiData.better_options)
+            ? aiData.better_options
+                .filter((item: any) => item && item.name && item.why_prefer)
+                .slice(0, 3)
+                .map((item: any) => ({
+                  name: String(item.name),
+                  why_prefer: String(item.why_prefer),
+                }))
+            : [],
           quantity: aiData.quantity || 'N/A',
           categories: aiData.categories || aiData.product_type || 'Food Product',
           ingredients_text: aiData.ingredients || 'Not specified',

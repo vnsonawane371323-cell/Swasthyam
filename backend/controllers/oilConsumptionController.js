@@ -37,6 +37,20 @@ function getBarcodeAnalyzerFallback() {
     barcode: 'UNKNOWN',
     product_name: 'Scanned Product (Estimated)',
     brand: 'Unknown Brand',
+    oil_type: 'Vegetable Oil',
+    oil_brand: 'Unknown Brand',
+    swasth_index: 52,
+    recommendation_summary: 'This appears to be a moderately processed oil. Prefer oils with lower saturated fat and higher unsaturated fat balance.',
+    better_options: [
+      {
+        name: 'Cold-pressed Mustard Oil',
+        why_prefer: 'Richer in monounsaturated fats and commonly less refined, which may preserve beneficial compounds.'
+      },
+      {
+        name: 'Groundnut Oil',
+        why_prefer: 'Usually has a better fatty acid balance and neutral cooking performance for Indian meals.'
+      }
+    ],
     quantity: 'N/A',
     categories: 'Food Product',
     ingredients_text: 'Not specified',
@@ -821,6 +835,14 @@ Return ONLY a valid JSON object (no markdown, no code blocks) with this exact st
   "barcode": "the barcode number if visible (13 digits for EAN-13, 12 for UPC) or null if not readable",
   "product_name": "full product name",
   "brand": "brand/manufacturer name",
+  "oil_type": "oil type if this is an oil product (e.g., Mustard Oil, Sunflower Oil), else null",
+  "oil_brand": "oil brand extracted from label (if visible), else null",
+  "swasth_index": number,
+  "recommendation_summary": "short summary explaining health quality of this oil",
+  "better_options": [
+    { "name": "better oil option 1", "why_prefer": "reason" },
+    { "name": "better oil option 2", "why_prefer": "reason" }
+  ],
   "quantity": "e.g., 1L, 500ml, 1kg",
   "product_type": "e.g., Sunflower Oil, Mustard Oil, Refined Oil, Cooking Oil",
   "categories": "e.g., Edible Oil, Cooking Oil, Food Product",
@@ -840,7 +862,13 @@ Return ONLY a valid JSON object (no markdown, no code blocks) with this exact st
   "pfa": "polyunsaturated fat value with unit (e.g., '25g') or null",
   "health_tips": ["tip1", "tip2", "tip3"],
   "is_food_product": true
-}`;
+}
+
+Swasth Index rules:
+- Return swasth_index on a 0-100 scale where higher is healthier.
+- Use ingredients quality, refinement level, and fatty acid balance.
+- 0-30: poor, 31-55: moderate, 56-75: good, 76-100: excellent.
+- Always include at least 2 items in better_options with clear practical reasons.`;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
