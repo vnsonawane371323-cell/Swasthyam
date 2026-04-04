@@ -164,9 +164,6 @@ exports.logConsumption = async (req, res, next) => {
     const effectiveKcal = getEffectiveKcal(rawKcal, multiplier);
     const normalizedTotalCalories = Number(totalCalories);
     const hasProvidedTotalCalories = Number.isFinite(normalizedTotalCalories) && normalizedTotalCalories >= 0;
-    
-    // Use provided totalCalories or default to rawKcal for total aggregation
-    const resolvedTotalCalories = hasProvidedTotalCalories ? normalizedTotalCalories : rawKcal;
 
     // Create new consumption entry
     const consumption = await OilConsumption.create({
@@ -183,13 +180,17 @@ exports.logConsumption = async (req, res, next) => {
       rawKcal,
       multiplier,
       effectiveKcal,
-      totalCalories: resolvedTotalCalories,
       quantity: parseFloat(quantity),
       unit,
       mealType,
       members: members || [],
       consumedAt: consumeDate
     });
+
+    if (hasProvidedTotalCalories) {
+      consumption.totalCalories = normalizedTotalCalories;
+      await consumption.save();
+    }
 
     // Update daily goal cumulative
     await dailyGoal.addEffectiveCalories(effectiveKcal);
@@ -206,7 +207,7 @@ exports.logConsumption = async (req, res, next) => {
         rawKcal,
         multiplier,
         effectiveKcal,
-        totalCalories: resolvedTotalCalories,
+        totalCalories: hasProvidedTotalCalories ? normalizedTotalCalories : null,
         ...status
       }
     });
@@ -289,9 +290,6 @@ exports.logGroupConsumption = async (req, res, next) => {
         const effectiveKcal = getEffectiveKcal(rawKcal, multiplier);
         const normalizedTotalCalories = Number(totalCalories);
         const hasProvidedTotalCalories = Number.isFinite(normalizedTotalCalories) && normalizedTotalCalories >= 0;
-        
-        // Use provided totalCalories or default to rawKcal for total aggregation
-        const resolvedTotalCalories = hasProvidedTotalCalories ? normalizedTotalCalories : rawKcal;
 
         // Create new consumption entry
         const consumption = await OilConsumption.create({
@@ -308,7 +306,6 @@ exports.logGroupConsumption = async (req, res, next) => {
           rawKcal,
           multiplier,
           effectiveKcal,
-          totalCalories: resolvedTotalCalories,
           quantity: parseFloat(quantity),
           unit,
           mealType,
@@ -318,6 +315,11 @@ exports.logGroupConsumption = async (req, res, next) => {
           isGroupLog: true
         });
 
+        if (hasProvidedTotalCalories) {
+          consumption.totalCalories = normalizedTotalCalories;
+          await consumption.save();
+        }
+
         // Update daily goal cumulative
         await dailyGoal.addEffectiveCalories(effectiveKcal);
 
@@ -325,7 +327,7 @@ exports.logGroupConsumption = async (req, res, next) => {
           userId,
           consumptionId: consumption._id,
           effectiveKcal,
-          totalCalories: resolvedTotalCalories
+          totalCalories: hasProvidedTotalCalories ? normalizedTotalCalories : null
         });
       } catch (error) {
         errors.push({ userId: item.userId, error: error.message });
