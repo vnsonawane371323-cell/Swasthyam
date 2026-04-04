@@ -66,6 +66,8 @@ export interface OnboardingData {
   activityLevel?: string;
   activityFactor?: number;
   tdee?: number;
+  calorieGoal?: 'maintain' | 'lose' | 'gain';
+  adjustedTdee?: number;
   medicalHistory?: Array<{ condition: string; severity: string }>;
   reportType?: string;
   mealsPerDay?: string;
@@ -337,8 +339,8 @@ class ApiService {
   }
 
   // Oil consumption endpoints
-  async logOilConsumption(data: OilConsumptionLog): Promise<ApiResponse<OilConsumptionEntry>> {
-    return this.request<OilConsumptionEntry>(API_ENDPOINTS.OIL.LOG, {
+  async logOilConsumption(data: OilConsumptionLog): Promise<ApiResponse<LogOilConsumptionResponse>> {
+    return this.request<LogOilConsumptionResponse>(API_ENDPOINTS.OIL.LOG, {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -361,9 +363,12 @@ class ApiService {
 
   async getTodayOilConsumption(date?: string): Promise<ApiResponse<TodayConsumptionResponse>> {
     const endpoint = date ? `${API_ENDPOINTS.OIL.TODAY}?date=${encodeURIComponent(date)}` : API_ENDPOINTS.OIL.TODAY;
-    return this.request<TodayConsumptionResponse>(endpoint, {
+    console.log('🛢️ [API] getTodayOilConsumption endpoint:', endpoint);
+    const response = await this.request<TodayConsumptionResponse>(endpoint, {
       method: 'GET',
     });
+    console.log('🛢️ [API] getTodayOilConsumption response:', JSON.stringify(response, null, 2));
+    return response;
   }
 
   async getUserOilStatus(date?: string): Promise<ApiResponse<UserOilStatusResponse>> {
@@ -386,15 +391,15 @@ class ApiService {
     });
   }
 
-  async updateOilEntry(id: string, data: Partial<OilConsumptionLog>): Promise<ApiResponse<OilConsumptionEntry>> {
-    return this.request<OilConsumptionEntry>(`${API_ENDPOINTS.OIL.UPDATE}/${id}`, {
+  async updateOilEntry(id: string, data: Partial<OilConsumptionLog>): Promise<ApiResponse<OilMutationResponse>> {
+    return this.request<OilMutationResponse>(`${API_ENDPOINTS.OIL.UPDATE}/${id}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   }
 
-  async deleteOilEntry(id: string): Promise<ApiResponse<{ dailyTotal: number }>> {
-    return this.request<{ dailyTotal: number }>(`${API_ENDPOINTS.OIL.DELETE}/${id}`, {
+  async deleteOilEntry(id: string): Promise<ApiResponse<OilTotalsSummary>> {
+    return this.request<OilTotalsSummary>(`${API_ENDPOINTS.OIL.DELETE}/${id}`, {
       method: 'DELETE',
     });
   }
@@ -509,6 +514,8 @@ export interface OilConsumptionLog {
   foodName: string;
   oilType: string;
   oilAmount: number;
+  oilAmountUnit?: 'ml' | 'g';
+  totalCalories?: number;
   quantity: number;
   unit: 'grams' | 'bowls' | 'pieces';
   mealType: 'Breakfast' | 'Lunch' | 'Snack' | 'Dinner';
@@ -519,15 +526,48 @@ export interface OilConsumptionLog {
 export interface OilConsumptionEntry extends OilConsumptionLog {
   _id: string;
   userId: string;
+  rawKcal?: number;
+  multiplier?: number;
+  effectiveKcal?: number;
   consumedAt: string;
   verified: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface OilTotalsSummary {
+  dailyTotal: number;
+  dailyTotalCalories?: number;
+  dailyOilCalories?: number;
+  dailyEffectiveCalories?: number;
+}
+
+export interface OilMutationResponse extends OilTotalsSummary {
+  entry?: OilConsumptionEntry;
+}
+
+export interface LogOilConsumptionResponse extends OilMutationResponse {
+  eventId?: string;
+  rawKcal?: number;
+  multiplier?: number;
+  effectiveKcal?: number;
+  goalKcal?: number;
+  goalMl?: number;
+  cumulativeEffKcal?: number;
+  remainingKcal?: number;
+  remainingMl?: number;
+  fillPercent?: number;
+  overage?: number;
+  eventsCount?: number;
+  status?: 'within_limit' | 'over_limit';
+}
+
 export interface OilEntriesResponse {
   entries: OilConsumptionEntry[];
   dailyTotal: number;
+  dailyTotalCalories?: number;
+  dailyOilCalories?: number;
+  dailyEffectiveCalories?: number;
   pagination: {
     total: number;
     page: number;
@@ -539,12 +579,16 @@ export interface OilEntriesResponse {
 export interface TodayConsumptionResponse {
   entries: OilConsumptionEntry[];
   dailyTotal: number;
+  dailyTotalCalories?: number;
+  dailyOilCalories?: number;
+  dailyEffectiveCalories?: number;
   count: number;
 }
 
 export interface WeeklyStat {
   _id: string;
   totalOil: number;
+  totalCalories?: number;
   entries: number;
 }
 

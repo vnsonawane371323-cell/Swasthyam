@@ -46,6 +46,11 @@ const oilConsumptionSchema = new mongoose.Schema({
     required: [true, 'Oil amount is required'],
     min: [0, 'Oil amount cannot be negative']
   },
+  oilAmountUnit: {
+    type: String,
+    enum: ['ml', 'g'],
+    default: 'ml'
+  },
   sfaPercent: {
     type: Number,
     default: 0
@@ -75,6 +80,10 @@ const oilConsumptionSchema = new mongoose.Schema({
   },
   effectiveKcal: {
     type: Number
+  },
+  totalCalories: {
+    type: Number,
+    min: [0, 'Total calories cannot be negative']
   },
   swasthIndex: {
     type: Number
@@ -147,11 +156,13 @@ oilConsumptionSchema.virtual('dateString').get(function() {
 // Keep all oil calorie fields in sync before persisting.
 oilConsumptionSchema.pre('save', function(next) {
   const oilAmount = Number(this.oilAmount) || 0;
+  const oilAmountUnit = this.oilAmountUnit === 'g' ? 'g' : 'ml';
+  const oilAmountGrams = oilAmountUnit === 'ml' ? oilAmount * 0.92 : oilAmount;
   const sfa = Number(this.sfaPercent) || 0;
   const tfa = Number(this.tfaPercent) || 0;
   const pufa = Number(this.pufaPercent) || 0;
 
-  const rawKcal = getRawOilKcal(oilAmount);
+  const rawKcal = getRawOilKcal(oilAmountGrams);
   const { harmScore, swasthIndex, multiplier } = getMultiplier(sfa, tfa, pufa);
   const effectiveKcal = getEffectiveKcal(rawKcal, multiplier);
 
@@ -194,6 +205,7 @@ oilConsumptionSchema.statics.getDailyTotal = async function(userId, date = new D
         totalOil: { $sum: '$oilAmount' },
         totalRawKcal: { $sum: '$rawKcal' },
         totalEffKcal: { $sum: '$effectiveKcal' },
+        totalCalories: { $sum: { $ifNull: ['$totalCalories', 0] } },
         count: { $sum: 1 }
       }
     }
@@ -203,6 +215,7 @@ oilConsumptionSchema.statics.getDailyTotal = async function(userId, date = new D
     totalOil: 0, 
     totalRawKcal: 0, 
     totalEffKcal: 0, 
+    totalCalories: 0,
     count: 0 
   };
 };
@@ -226,6 +239,7 @@ oilConsumptionSchema.statics.getWeeklyStats = async function(userId) {
           $dateToString: { format: '%Y-%m-%d', date: '$consumedAt' }
         },
         totalOil: { $sum: '$oilAmount' },
+        totalCalories: { $sum: { $ifNull: ['$totalCalories', 0] } },
         entries: { $sum: 1 }
       }
     },

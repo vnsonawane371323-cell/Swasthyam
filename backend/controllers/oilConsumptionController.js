@@ -120,10 +120,22 @@ function getUserProfileForGoal(user) {
   return { bmr, activityFactor, tdee };
 }
 
+function normalizeOilAmountUnit(unit) {
+  const value = String(unit || 'ml').trim().toLowerCase();
+  if (value === 'g' || value === 'gram' || value === 'grams') return 'g';
+  return 'ml';
+}
+
+function toOilAmountGrams(amount, unit) {
+  const numericAmount = Number(amount) || 0;
+  const normalizedUnit = normalizeOilAmountUnit(unit);
+  return normalizedUnit === 'ml' ? numericAmount * 0.92 : numericAmount;
+}
+
 // Log oil consumption
 exports.logConsumption = async (req, res, next) => {
   try {
-    const { foodName, oilType, oilAmount, quantity, unit, mealType, members, consumedAt, sfaPercent, tfaPercent, pufaPercent } = req.body;
+    const { foodName, oilType, oilAmount, oilAmountUnit, quantity, unit, mealType, members, consumedAt, sfaPercent, tfaPercent, pufaPercent, totalCalories } = req.body;
 
     // Validate required fields
     if (!foodName || !oilType || oilAmount === undefined || !quantity || !unit || !mealType) {
@@ -141,20 +153,25 @@ exports.logConsumption = async (req, res, next) => {
     const userProfile = getUserProfileForGoal(req.user);
     const dailyGoal = await DailyGoal.getOrComputeGoal(req.user._id, dateOnly, userProfile);
 
-    const grams = parseFloat(oilAmount);
+    const amountValue = parseFloat(oilAmount);
+    const normalizedOilAmountUnit = normalizeOilAmountUnit(oilAmountUnit);
+    const oilAmountGrams = toOilAmountGrams(amountValue, normalizedOilAmountUnit);
     const sfa = parseFloat(sfaPercent ?? 0) || 0;
     const tfa = parseFloat(tfaPercent ?? 0) || 0;
     const pufa = parseFloat(pufaPercent ?? 0) || 0;
-    const rawKcal = getRawOilKcal(grams);
+    const rawKcal = getRawOilKcal(oilAmountGrams);
     const { harmScore, swasthIndex, multiplier } = getMultiplier(sfa, tfa, pufa);
     const effectiveKcal = getEffectiveKcal(rawKcal, multiplier);
+    const normalizedTotalCalories = Number(totalCalories);
+    const hasProvidedTotalCalories = Number.isFinite(normalizedTotalCalories) && normalizedTotalCalories >= 0;
 
     // Create new consumption entry
     const consumption = await OilConsumption.create({
       userId: req.user._id,
       foodName,
       oilType,
-      oilAmount: grams,
+      oilAmount: amountValue,
+      oilAmountUnit: normalizedOilAmountUnit,
       sfaPercent: sfa,
       tfaPercent: tfa,
       pufaPercent: pufa,
@@ -169,6 +186,11 @@ exports.logConsumption = async (req, res, next) => {
       members: members || [],
       consumedAt: consumeDate
     });
+
+    if (hasProvidedTotalCalories) {
+      consumption.totalCalories = normalizedTotalCalories;
+      await consumption.save();
+    }
 
     // Update daily goal cumulative
     await dailyGoal.addEffectiveCalories(effectiveKcal);
@@ -185,6 +207,7 @@ exports.logConsumption = async (req, res, next) => {
         rawKcal,
         multiplier,
         effectiveKcal,
+        totalCalories: hasProvidedTotalCalories ? normalizedTotalCalories : null,
         ...status
       }
     });
@@ -227,7 +250,7 @@ exports.logGroupConsumption = async (req, res, next) => {
 
     for (const item of consumptionData) {
       try {
-        const { userId, foodName, oilType, oilAmount, quantity, unit, mealType, consumedAt, sfaPercent, tfaPercent, pufaPercent } = item;
+        const { userId, foodName, oilType, oilAmount, oilAmountUnit, quantity, unit, mealType, consumedAt, sfaPercent, tfaPercent, pufaPercent, totalCalories } = item;
 
         // Validate required fields
         if (!userId || !foodName || !oilType || oilAmount === undefined || !quantity || !unit || !mealType) {
@@ -256,20 +279,25 @@ exports.logGroupConsumption = async (req, res, next) => {
         const userProfile = getUserProfileForGoal(user);
         const dailyGoal = await DailyGoal.getOrComputeGoal(userId, dateOnly, userProfile);
 
-        const grams = parseFloat(oilAmount);
+        const amountValue = parseFloat(oilAmount);
+        const normalizedOilAmountUnit = normalizeOilAmountUnit(oilAmountUnit);
+        const oilAmountGrams = toOilAmountGrams(amountValue, normalizedOilAmountUnit);
         const sfa = parseFloat(sfaPercent ?? 0) || 0;
         const tfa = parseFloat(tfaPercent ?? 0) || 0;
         const pufa = parseFloat(pufaPercent ?? 0) || 0;
-        const rawKcal = getRawOilKcal(grams);
+        const rawKcal = getRawOilKcal(oilAmountGrams);
         const { harmScore, swasthIndex, multiplier } = getMultiplier(sfa, tfa, pufa);
         const effectiveKcal = getEffectiveKcal(rawKcal, multiplier);
+        const normalizedTotalCalories = Number(totalCalories);
+        const hasProvidedTotalCalories = Number.isFinite(normalizedTotalCalories) && normalizedTotalCalories >= 0;
 
         // Create new consumption entry
         const consumption = await OilConsumption.create({
           userId,
           foodName,
           oilType,
-          oilAmount: grams,
+          oilAmount: amountValue,
+          oilAmountUnit: normalizedOilAmountUnit,
           sfaPercent: sfa,
           tfaPercent: tfa,
           pufaPercent: pufa,
@@ -287,13 +315,19 @@ exports.logGroupConsumption = async (req, res, next) => {
           isGroupLog: true
         });
 
+        if (hasProvidedTotalCalories) {
+          consumption.totalCalories = normalizedTotalCalories;
+          await consumption.save();
+        }
+
         // Update daily goal cumulative
         await dailyGoal.addEffectiveCalories(effectiveKcal);
 
         results.push({
           userId,
           consumptionId: consumption._id,
-          effectiveKcal
+          effectiveKcal,
+          totalCalories: hasProvidedTotalCalories ? normalizedTotalCalories : null
         });
       } catch (error) {
         errors.push({ userId: item.userId, error: error.message });
@@ -353,6 +387,9 @@ exports.getConsumption = async (req, res, next) => {
       data: {
         entries,
         dailyTotal: dailyTotal.totalOil,
+        dailyTotalCalories: dailyTotal.totalCalories,
+        dailyOilCalories: dailyTotal.totalRawKcal,
+        dailyEffectiveCalories: dailyTotal.totalEffKcal,
         pagination: {
           total,
           page: parseInt(page),
@@ -384,14 +421,26 @@ exports.getTodayConsumption = async (req, res, next) => {
     .lean();
 
     const dailyTotal = await OilConsumption.getDailyTotal(req.user._id, dateParam);
+    
+    console.log('🛢️ [Backend] getTodayConsumption for user:', req.user._id);
+    console.log('🛢️ [Backend] Date range:', start, 'to', end);
+    console.log('🛢️ [Backend] Entries found:', entries.length);
+    console.log('🛢️ [Backend] Daily total:', dailyTotal);
+
+    const responseData = {
+      entries,
+      dailyTotal: dailyTotal.totalOil,
+      dailyTotalCalories: dailyTotal.totalCalories,
+      dailyOilCalories: dailyTotal.totalRawKcal,
+      dailyEffectiveCalories: dailyTotal.totalEffKcal,
+      count: entries.length
+    };
+    
+    console.log('🛢️ [Backend] Response data:', responseData);
 
     res.status(200).json({
       success: true,
-      data: {
-        entries,
-        dailyTotal: dailyTotal.totalOil,
-        count: entries.length
-      }
+      data: responseData
     });
   } catch (error) {
     next(error);
@@ -438,7 +487,10 @@ exports.deleteConsumption = async (req, res, next) => {
       success: true,
       message: 'Consumption entry deleted successfully',
       data: {
-        dailyTotal: dailyTotal.totalOil
+        dailyTotal: dailyTotal.totalOil,
+        dailyTotalCalories: dailyTotal.totalCalories,
+        dailyOilCalories: dailyTotal.totalRawKcal,
+        dailyEffectiveCalories: dailyTotal.totalEffKcal
       }
     });
   } catch (error) {
@@ -450,7 +502,7 @@ exports.deleteConsumption = async (req, res, next) => {
 exports.updateConsumption = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { foodName, oilType, oilAmount, quantity, unit, mealType, members } = req.body;
+    const { foodName, oilType, oilAmount, oilAmountUnit, quantity, unit, mealType, members, totalCalories } = req.body;
 
     const consumption = await OilConsumption.findOne({
       _id: id,
@@ -468,10 +520,21 @@ exports.updateConsumption = async (req, res, next) => {
     if (foodName) consumption.foodName = foodName;
     if (oilType) consumption.oilType = oilType;
     if (oilAmount !== undefined) consumption.oilAmount = parseFloat(oilAmount);
+    if (oilAmountUnit !== undefined) consumption.oilAmountUnit = normalizeOilAmountUnit(oilAmountUnit);
     if (quantity !== undefined) consumption.quantity = parseFloat(quantity);
     if (unit) consumption.unit = unit;
     if (mealType) consumption.mealType = mealType;
     if (members !== undefined) consumption.members = members;
+    if (totalCalories !== undefined) {
+      const normalizedTotalCalories = Number(totalCalories);
+      if (!Number.isFinite(normalizedTotalCalories) || normalizedTotalCalories < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'totalCalories must be a non-negative number'
+        });
+      }
+      consumption.totalCalories = normalizedTotalCalories;
+    }
 
     await consumption.save();
 
@@ -483,7 +546,10 @@ exports.updateConsumption = async (req, res, next) => {
       message: 'Consumption entry updated successfully',
       data: {
         entry: consumption,
-        dailyTotal: dailyTotal.totalOil
+        dailyTotal: dailyTotal.totalOil,
+        dailyTotalCalories: dailyTotal.totalCalories,
+        dailyOilCalories: dailyTotal.totalRawKcal,
+        dailyEffectiveCalories: dailyTotal.totalEffKcal
       }
     });
   } catch (error) {

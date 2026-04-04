@@ -416,7 +416,17 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
           const caloriesLogged = Math.round(oilAmount * 9);
           Alert.alert(
             'Success', 
-            `Logged ${caloriesLogged} cal (${oilAmount.toFixed(1)}ml) for ${selectedMembers.size} member(s)`
+            `Logged ${caloriesLogged} cal (${oilAmount.toFixed(1)}ml) for ${selectedMembers.size} member(s)`,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Navigate back to Home to refresh progress bars
+                  console.log('🛢️ [OilTracker] Going back to Home after group log');
+                  navigation.goBack();
+                }
+              }
+            ]
           );
           
           // Reset form
@@ -462,12 +472,30 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
           if (editingEntry) {
             // Update existing entry - reload from server to get fresh data
             await loadEntries();
-            Alert.alert('Success', 'Entry updated successfully');
+            Alert.alert('Success', 'Entry updated successfully', [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Navigate back to Home to refresh progress bars
+                  console.log('🛢️ [OilTracker] Going back to Home after edit');
+                  navigation.goBack();
+                }
+              }
+            ]);
           } else {
             // Reload entries from server to get the proper MongoDB ID
             await loadEntries();
             const caloriesLogged = Math.round(oilAmount * 9);
-            Alert.alert('Success', `Logged ${caloriesLogged} cal (${oilAmount.toFixed(1)}ml)`);
+            Alert.alert('Success', `Logged ${caloriesLogged} cal (${oilAmount.toFixed(1)}ml)`, [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Navigate back to Home to refresh progress bars
+                  console.log('🛢️ [OilTracker] Going back to Home after log. Oil amount:', oilAmount, 'ml');
+                  navigation.goBack();
+                }
+              }
+            ]);
           }
           
           // Check if user has exceeded their daily oil limit

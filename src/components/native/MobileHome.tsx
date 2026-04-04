@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -112,8 +112,8 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   const [selectedDayCalories, setSelectedDayCalories] = useState(0);
   
   // Nutrition tracking state
-  const [totalCalories, setTotalCalories] = useState(2000); // User's TDEE or adjustedTdee (default 2000)
-  const [consumedCalories, setConsumedCalories] = useState(0); // Actual calories consumed from oil
+  const [totalCalories, setTotalCalories] = useState(0); // User's TDEE or adjustedTdee
+  const [consumedCalories, setConsumedCalories] = useState(0); // Total food calories consumed (not just oil)
   const [protein, setProtein] = useState(30);
   const [fat, setFat] = useState(15);
   const [carbs, setCarbs] = useState(40);
@@ -125,9 +125,32 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   const [beforeAvg, setBeforeAvg] = useState(0);
   const [currentAvg, setCurrentAvg] = useState(0);
 
+  const getDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const effectiveDailyLimitCal =
-    dailyLimitCal > 0 ? dailyLimitCal : Math.max(1, Math.round(totalCalories * 0.07));
+    dailyLimitCal > 0
+      ? dailyLimitCal
+      : totalCalories > 0
+        ? Math.max(1, Math.round(totalCalories * 0.07))
+        : 0;
   const dailyConsumedCal = Math.round(dailyConsumption * 9);
+  const resolvedOilConsumedCal = dailyConsumedCal > 0 ? dailyConsumedCal : Math.max(0, Math.round(selectedDayCalories));
+  const resolvedTotalConsumedCal = Math.max(0, Math.round(consumedCalories));
+  const oilFillPercent =
+    effectiveDailyLimitCal > 0
+      ? Math.min((resolvedOilConsumedCal / effectiveDailyLimitCal) * 100, 100)
+      : 0;
+  const totalCaloriesFillPercent =
+    totalCalories > 0
+      ? Math.min((resolvedTotalConsumedCal / totalCalories) * 100, 100)
+      : 0;
+  const weeklyMaxCalories = weeklyData.reduce((max, point) => Math.max(max, point.calories), 0);
+  const chartMaxCal = Math.max(effectiveDailyLimitCal * 1.2, weeklyMaxCalories * 1.1, 1);
 
   // Calculate consumption percentage and determine mascot state
   // Check if selected day exceeded limit
@@ -142,27 +165,171 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
       ? `Great job! You stayed within your limit on this day with ${Math.round(selectedDayCalories)}cal`
       : "Select a day to see your oil consumption";
 
-  const fetchDaily = async () => {
-    // Oil consumption tracking moved to Oil Tracker section
-    // This function is deprecated on home screen
-  };
-  
-  const fetchWeeklyData = async () => {
-    // Oil consumption tracking moved to Oil Tracker section
-    // This function is deprecated on home screen
-  };
+  const fetchWeeklyData = useCallback(async () => {
+    if (weekDates.length < 7) return;
 
-  const fetch30DayProgress = async () => {
-    // Oil consumption tracking moved to Oil Tracker section
-    // This function is deprecated on home screen
-  };
+    const zeroWeek = weekDates.map((item) => ({
+      date: item.day.slice(0, 3),
+      calories: 0,
+    }));
+
+    try {
+      const weekStart = new Date(weekDates[0].fullDate);
+      weekStart.setHours(0, 0, 0, 0);
+
+      const weekEnd = new Date(weekDates[6].fullDate);
+      weekEnd.setHours(23, 59, 59, 999);
+
+      const response = await apiService.getOilEntries({
+        startDate: weekStart.toISOString(),
+        endDate: weekEnd.toISOString(),
+        limit: 500,
+        page: 1,
+      });
+
+      if (!response.success || !response.data?.entries) {
+        setWeeklyData(zeroWeek);
+        return;
+      }
+
+      const totalsByDate = new Map<string, number>();
+      weekDates.forEach((item) => {
+        totalsByDate.set(getDateKey(item.fullDate), 0);
+      });
+
+      response.data.entries.forEach((entry) => {
+        const entryDate = new Date(entry.consumedAt);
+        const key = getDateKey(entryDate);
+        if (!totalsByDate.has(key)) return;
+
+        // Weekly graph tracks oil calories only
+        const rawCalories = Number(entry.rawKcal);
+        const fallbackCalories = Number(entry.oilAmount) * 9;
+        const resolvedCalories = Number.isFinite(rawCalories) && rawCalories >= 0
+          ? rawCalories
+          : (Number.isFinite(fallbackCalories) && fallbackCalories >= 0
+            ? fallbackCalories
+            : 0);
+
+        totalsByDate.set(key, (totalsByDate.get(key) || 0) + resolvedCalories);
+      });
+
+      const mappedWeek = weekDates.map((item) => ({
+        date: item.day.slice(0, 3),
+        calories: Math.round(totalsByDate.get(getDateKey(item.fullDate)) || 0),
+      }));
+
+      setWeeklyData(mappedWeek);
+    } catch (error) {
+      console.log('Failed to fetch weekly data:', error);
+      setWeeklyData(zeroWeek);
+    }
+  }, [weekDates]);
+
+  const fetchCalorieTargets = useCallback(async () => {
+    try {
+      const [meResult, todayResult, statusResult] = await Promise.allSettled([
+        apiService.getMe(),
+        apiService.getTodayOilConsumption(),
+        apiService.getUserOilStatus(),
+      ]);
+
+      const meResponse = meResult.status === 'fulfilled' ? meResult.value : null;
+      const todayResponse = todayResult.status === 'fulfilled' ? todayResult.value : null;
+      const statusResponse = statusResult.status === 'fulfilled' ? statusResult.value : null;
+
+      const statusGoalKcal = Number(statusResponse?.data?.goalKcal);
+      const statusGoalMl = Number(statusResponse?.data?.goalMl);
+
+      if (statusResponse?.success && statusResponse.data) {
+        setDailyLimitCal(Number.isFinite(statusGoalKcal) && statusGoalKcal > 0 ? Math.round(statusGoalKcal) : 0);
+        setDailyLimit(Number.isFinite(statusGoalMl) && statusGoalMl > 0 ? Math.round(statusGoalMl) : 0);
+      }
+
+      const me = meResponse?.user || (meResponse?.data as any)?.user || meResponse?.data;
+      if (meResponse?.success && me) {
+        const adjusted = Number(me.adjustedTdee);
+        const tdee = Number(me.tdee);
+        const bmr = Number(me.bmr);
+        const activityFactor = Number(me.activityFactor);
+        const computedTdee = Number.isFinite(bmr) && bmr > 0
+          ? bmr * (Number.isFinite(activityFactor) && activityFactor > 0 ? activityFactor : 1.5)
+          : 0;
+
+        const fallbackFromGoal = Number.isFinite(statusGoalKcal) && statusGoalKcal > 0
+          ? statusGoalKcal / 0.07
+          : 0;
+
+        const resolvedTarget = Number.isFinite(adjusted) && adjusted > 0
+          ? adjusted
+          : (Number.isFinite(tdee) && tdee > 0
+            ? tdee
+            : (computedTdee > 0 ? computedTdee : fallbackFromGoal));
+
+        setTotalCalories(Math.round(Math.max(0, resolvedTarget)));
+      }
+
+      if (todayResponse?.success && todayResponse.data) {
+        const backendTotal = Number(todayResponse.data.dailyTotalCalories);
+        const oilTotal = Number(todayResponse.data.dailyOilCalories);
+        const fallbackOil = Number(todayResponse.data.dailyTotal) * 9;
+
+        const resolvedTotalConsumed = Number.isFinite(backendTotal) && backendTotal >= 0
+          ? backendTotal
+          : (Number.isFinite(oilTotal) && oilTotal >= 0
+            ? oilTotal
+            : (Number.isFinite(fallbackOil) && fallbackOil >= 0 ? fallbackOil : 0));
+
+        const resolvedOilConsumed = Number.isFinite(oilTotal) && oilTotal >= 0
+          ? oilTotal
+          : (Number.isFinite(fallbackOil) && fallbackOil >= 0 ? fallbackOil : 0);
+
+        setConsumedCalories(Math.round(resolvedTotalConsumed));
+
+        // Oil bar should reflect oil calories only
+        setDailyConsumption(Math.max(0, resolvedOilConsumed) / 9);
+      }
+    } catch (error) {
+      console.log('Failed to fetch calorie targets:', error);
+    }
+  }, []);
+
+  const fetch30DayProgress = useCallback(async () => {
+    // Keep placeholder values for now; this section can be wired to a dedicated endpoint later.
+    setTotalOilSaved(0);
+    setAvgDailyReduction(0);
+    setBeforeAvg(0);
+    setCurrentAvg(0);
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Oil consumption data is now only fetched in Oil Tracker section
-    // Removed oil-related refresh calls from home screen
+    await Promise.all([fetchCalorieTargets(), fetchWeeklyData(), fetch30DayProgress()]);
     setRefreshing(false);
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchCalorieTargets();
+      fetchWeeklyData();
+      fetch30DayProgress();
+    }, [fetchCalorieTargets, fetchWeeklyData, fetch30DayProgress])
+  );
+
+  useEffect(() => {
+    if (!weekDates.length || !weeklyData.length) {
+      setSelectedDayCalories(0);
+      return;
+    }
+
+    const selectedIndex = weekDates.findIndex(
+      (item) => item.fullDate.toDateString() === selectedDate.toDateString()
+    );
+
+    if (selectedIndex >= 0) {
+      setSelectedDayCalories(weeklyData[selectedIndex]?.calories || 0);
+    }
+  }, [selectedDate, weekDates, weeklyData]);
 
   // Oil consumption data is now only fetched in the Oil Tracker section
   // Removed from home screen to prevent logging at startup
@@ -239,9 +406,9 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
               <Line x1="30" y1="20" x2="30" y2="110" stroke="#3d6b7a" strokeWidth="1.5" />
               
               {/* Y-axis labels */}
-              <SvgText x="25" y="25" fill="#5B5B5B" fontSize="10" fontWeight="600" textAnchor="end">{dailyLimitCal}</SvgText>
-              <SvgText x="25" y="55" fill="#5B5B5B" fontSize="10" fontWeight="500" textAnchor="end">{Math.round(dailyLimitCal * 0.67)}</SvgText>
-              <SvgText x="25" y="85" fill="#5B5B5B" fontSize="10" fontWeight="500" textAnchor="end">{Math.round(dailyLimitCal * 0.33)}</SvgText>
+              <SvgText x="25" y="25" fill="#5B5B5B" fontSize="10" fontWeight="600" textAnchor="end">{effectiveDailyLimitCal}</SvgText>
+              <SvgText x="25" y="55" fill="#5B5B5B" fontSize="10" fontWeight="500" textAnchor="end">{Math.round(effectiveDailyLimitCal * 0.67)}</SvgText>
+              <SvgText x="25" y="85" fill="#5B5B5B" fontSize="10" fontWeight="500" textAnchor="end">{Math.round(effectiveDailyLimitCal * 0.33)}</SvgText>
               <SvgText x="25" y="113" fill="#5B5B5B" fontSize="10" fontWeight="600" textAnchor="end">0</SvgText>
               
               {/* Safe zone indicator */}
@@ -261,7 +428,7 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
                   <Path
                     d={`M30,110 ${weeklyData.map((point, i) => {
                       const x = 30 + (i * 250 / 6);
-                      const maxCal = dailyLimitCal * 1.2;
+                      const maxCal = chartMaxCal;
                       const y = 110 - ((point.calories / maxCal) * 90);
                       return `L${x},${Math.max(20, Math.min(110, y))}`;
                     }).join(' ')} L${30 + (6 * 250 / 6)},110 Z`}
@@ -272,7 +439,7 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
                   <Path
                     d={weeklyData.map((point, i) => {
                       const x = 30 + (i * 250 / 6);
-                      const maxCal = dailyLimitCal * 1.2;
+                      const maxCal = chartMaxCal;
                       const y = 110 - ((point.calories / maxCal) * 90);
                       return `${i === 0 ? 'M' : 'L'}${x},${Math.max(20, Math.min(110, y))}`;
                     }).join(' ')}
@@ -286,10 +453,10 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
                   {/* Data points with glow effect */}
                   {weeklyData.map((point, i) => {
                     const x = 30 + (i * 250 / 6);
-                    const maxCal = dailyLimitCal * 1.2;
+                    const maxCal = chartMaxCal;
                     const y = 110 - ((point.calories / maxCal) * 90);
                     const clampedY = Math.max(20, Math.min(110, y));
-                    const isOverLimit = point.calories > dailyLimitCal;
+                    const isOverLimit = point.calories > effectiveDailyLimitCal;
                     
                     return (
                       <G key={i}>
@@ -440,11 +607,11 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
           <View style={styles.usageHeader}>
             <Text style={styles.usageTitle}>{t('home.todaysOilUsage')}</Text>
             <Text style={styles.usageValue}>
-              {`${dailyConsumedCal} / ${effectiveDailyLimitCal} cal`}
+              {`${resolvedOilConsumedCal} / ${effectiveDailyLimitCal} cal`}
             </Text>
           </View>
           <View style={styles.progressBarContainer}>
-            <View style={[styles.progressBarFill, { width: `${Math.min((dailyConsumedCal / effectiveDailyLimitCal) * 100, 100)}%` }]} />
+            <View style={[styles.progressBarFill, { width: `${oilFillPercent}%` }]} />
           </View>
         </View>
         
@@ -467,13 +634,11 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
           <View style={styles.caloriesBarHeader}>
             <Text style={styles.caloriesBarLabel}>Total Calories</Text>
             <Text style={styles.caloriesBarValue}>
-              {`${consumedCalories} / ${totalCalories} cal`}
+              {`${resolvedTotalConsumedCal} / ${totalCalories} cal`}
             </Text>
           </View>
           <View style={styles.caloriesProgressBarContainer}>
-            {totalCalories > 0 && (
-              <View style={[styles.caloriesProgressBarFill, { width: `${Math.min((consumedCalories / totalCalories) * 100, 100)}%` }]} />
-            )}
+            <View style={[styles.caloriesProgressBarFill, { width: `${totalCaloriesFillPercent}%` }]} />
           </View>
         </View>
 

@@ -68,6 +68,11 @@ export function OnboardingFlow({ onComplete, language }: OnboardingFlowProps) {
         }))
       : [];
     
+    // Calculate oil budget based on adjusted TDEE (7% is per oil budget system)
+    const adjustedTdee = basicInfo.adjustedTdee || basicInfo.tdee || 2000;
+    const calculatedOilBudget = Math.round((adjustedTdee * 0.07) * 10) / 10; // 7% of daily calories
+    const oilBudgetString = calculatedOilBudget.toFixed(0);
+    
     const onboardingData = {
       // Basic Info
       name: basicInfo.name || '',
@@ -79,6 +84,8 @@ export function OnboardingFlow({ onComplete, language }: OnboardingFlowProps) {
       activityLevel: basicInfo.activityLevel || undefined,
       activityFactor: basicInfo.activityFactor ? Number(basicInfo.activityFactor) : undefined,
       tdee: basicInfo.tdee ? Number(basicInfo.tdee) : undefined,
+      calorieGoal: basicInfo.calorieGoal || 'maintain',
+      adjustedTdee: basicInfo.adjustedTdee ? Number(basicInfo.adjustedTdee) : undefined,
       
       // Medical History
       medicalHistory,
@@ -94,7 +101,7 @@ export function OnboardingFlow({ onComplete, language }: OnboardingFlowProps) {
       // Oil Preferences
       currentOils: oilPreferences.currentOils || [],
       monthlyOilConsumption: oilPreferences.monthlyConsumption ? parseFloat(oilPreferences.monthlyConsumption) : undefined,
-      oilBudget: oilPreferences.budget || '',
+      oilBudget: oilPreferences.budget || oilBudgetString, // Use calculated budget if not provided in oil preferences
     };
     
     try {

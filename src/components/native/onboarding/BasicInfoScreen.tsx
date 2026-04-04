@@ -9,12 +9,50 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  calculateBMI,
+  getBMICategory,
+  getHealthSuggestionText,
+  getSuggestionBackgroundColor as getSuggestionBackgroundColorByGoal,
+  getGoalIcon
+} from '../../../utils/healthSuggestions';
 
 interface BasicInfoScreenProps {
   onNext: (data: any) => void;
   onSkip: () => void;
   onBack: () => void;
   language: string;
+}
+
+const weightGoalOptions = [
+  {
+    value: 'lose',
+    label: 'Lose Weight',
+    icon: '📉',
+    description: 'Reduce by 500 cal/day',
+  },
+  {
+    value: 'maintain',
+    label: 'Maintain Weight',
+    icon: '⚖️',
+    description: 'Keep current weight',
+  },
+  {
+    value: 'gain',
+    label: 'Gain Weight',
+    icon: '📈',
+    description: 'Add 500 cal/day',
+  },
+];
+
+// Function to suggest weight goal based on BMI and health profile
+function suggestWeightGoal(bmi: number): string {
+  return getBMICategory(bmi).goal;
+}
+
+// Function to get health suggestion text
+function getHealthSuggestion(bmi: number): string {
+  return getHealthSuggestionText(bmi);
 }
 
 export function BasicInfoScreen({ onNext, onSkip, onBack, language }: BasicInfoScreenProps) {
@@ -25,9 +63,12 @@ export function BasicInfoScreen({ onNext, onSkip, onBack, language }: BasicInfoS
   const [height, setHeight] = useState('');
   const [activityLevel, setActivityLevel] = useState('');
   const [dailyCaloriesInput, setDailyCaloriesInput] = useState('');
+  const [calorieGoal, setCalorieGoal] = useState<'lose' | 'maintain' | 'gain' | ''>('');
+  const [suggestedGoal, setSuggestedGoal] = useState<string>('');
   const [bmi, setBmi] = useState<number | null>(null);
   const [bmr, setBmr] = useState<number | null>(null);
   const [tdee, setTdee] = useState<number | null>(null);
+  const [adjustedTdee, setAdjustedTdee] = useState<number | null>(null);
 
   // Calculate BMI and BMR when inputs change
   useEffect(() => {
@@ -38,8 +79,7 @@ export function BasicInfoScreen({ onNext, onSkip, onBack, language }: BasicInfoS
       
       if (weightNum > 0 && heightNum > 0 && ageNum > 0) {
         // Calculate BMI
-        const heightM = heightNum / 100; // Convert cm to meters
-        const calculatedBmi = weightNum / (heightM * heightM);
+        const calculatedBmi = calculateBMI(heightNum, weightNum);
         setBmi(calculatedBmi);
         
         // Calculate BMR using Mifflin-St Jeor equation
@@ -50,6 +90,10 @@ export function BasicInfoScreen({ onNext, onSkip, onBack, language }: BasicInfoS
           calculatedBmr -= 161;
         }
         setBmr(Math.round(calculatedBmr));
+        
+        // Suggest weight goal based on BMI
+        const suggestion = suggestWeightGoal(calculatedBmi);
+        setSuggestedGoal(suggestion);
         
         // Calculate TDEE if activity level is selected
         if (activityLevel) {
@@ -74,8 +118,24 @@ export function BasicInfoScreen({ onNext, onSkip, onBack, language }: BasicInfoS
       setBmi(null);
       setBmr(null);
       setTdee(null);
+      setSuggestedGoal('');
     }
   }, [weight, height, age, gender, activityLevel, dailyCaloriesInput]);
+
+  // Calculate adjusted TDEE when calorie goal changes
+  useEffect(() => {
+    if (tdee && calorieGoal) {
+      let adjusted = tdee;
+      if (calorieGoal === 'lose') {
+        adjusted = tdee - 500;
+      } else if (calorieGoal === 'gain') {
+        adjusted = tdee + 500;
+      }
+      setAdjustedTdee(adjusted);
+    } else {
+      setAdjustedTdee(null);
+    }
+  }, [tdee, calorieGoal]);
 
   const getBMICategory = (bmi: number) => {
     if (bmi < 18.5) return { text: 'Underweight', color: '#3b82f6' };
@@ -112,11 +172,13 @@ export function BasicInfoScreen({ onNext, onSkip, onBack, language }: BasicInfoS
       bmr,
       activityLevel,
       activityFactor,
-      tdee
+      tdee,
+      calorieGoal: calorieGoal || suggestedGoal,
+      adjustedTdee
     });
   };
 
-  const isFormValid = name && age && gender && weight && height && activityLevel;
+  const isFormValid = name && age && gender && weight && height && activityLevel && (calorieGoal || suggestedGoal);
 
   return (
     <View style={styles.container}>
@@ -291,12 +353,67 @@ export function BasicInfoScreen({ onNext, onSkip, onBack, language }: BasicInfoS
                   </View>
                 </View>
               )}
+
+              {adjustedTdee && calorieGoal && (
+                <View style={styles.metabolicRow}>
+                  <Text style={styles.metabolicLabel}>Adjusted Goal</Text>
+                  <View style={styles.metabolicValueContainer}>
+                    <Text style={styles.metabolicValue}>{adjustedTdee} kcal/day</Text>
+                    <Text style={styles.metabolicSubtext}>Your target intake</Text>
+                  </View>
+                </View>
+              )}
               
               <View style={styles.metabolicInfo}>
                 <Ionicons name="information-circle" size={16} color="#3b82f6" />
                 <Text style={styles.metabolicInfoText}>
                   Your personalized oil limit will be calculated based on these values
                 </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Health Suggestion */}
+          {bmi !== null && (
+            <View style={[styles.healthSuggestionCard, { backgroundColor: getSuggestionBackgroundColorByGoal(suggestedGoal as any) }]}>
+              <View style={styles.suggestionHeader}>
+                <Text style={[styles.suggestionIcon, { fontSize: 24 }]}>
+                  {getGoalIcon(suggestedGoal as any)}
+                </Text>
+                <Text style={styles.suggestionTitle}>Health Recommendation</Text>
+              </View>
+              <Text style={styles.suggestionText}>
+                {getHealthSuggestion(bmi!)}
+              </Text>
+            </View>
+          )}
+
+          {/* Weight Goal Selection */}
+          {bmi !== null && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Your Weight Goal</Text>
+              <Text style={styles.helperText}>
+                {suggestedGoal ? `We recommend: ${weightGoalOptions.find(o => o.value === suggestedGoal)?.label}` : 'Select your preferred weight goal'}
+              </Text>
+              <View style={styles.goalOptionsContainer}>
+                {weightGoalOptions.map((option) => (
+                  <TouchableOpacity
+                    key={option.value}
+                    style={[
+                      styles.goalOption,
+                      calorieGoal === option.value && styles.goalOptionSelected,
+                      calorieGoal === '' && suggestedGoal === option.value && styles.goalOptionSuggested,
+                    ]}
+                    onPress={() => setCalorieGoal(option.value as 'lose' | 'maintain' | 'gain')}
+                  >
+                    <Text style={styles.goalOptionIcon}>{option.icon}</Text>
+                    <Text style={styles.goalOptionLabel}>{option.label}</Text>
+                    <Text style={styles.goalOptionDescription}>{option.description}</Text>
+                    {calorieGoal === option.value && (
+                      <Ionicons name="checkmark-circle" size={20} color="#10b981" style={styles.checkmark} />
+                    )}
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
           )}
@@ -574,5 +691,77 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#3b82f6',
     lineHeight: 16,
+  },
+  healthSuggestionCard: {
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  suggestionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  suggestionIcon: {
+    fontSize: 24,
+  },
+  suggestionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1b4a5a',
+  },
+  suggestionText: {
+    fontSize: 13,
+    color: '#5B5B5B',
+    lineHeight: 18,
+  },
+  goalOptionsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  goalOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderWidth: 2,
+    borderColor: '#E7F2F1',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+    position: 'relative',
+  },
+  goalOptionSelected: {
+    borderColor: '#10b981',
+    backgroundColor: '#F0FDF4',
+  },
+  goalOptionSuggested: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#F0F9FF',
+  },
+  goalOptionIcon: {
+    fontSize: 28,
+    marginBottom: 4,
+  },
+  goalOptionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1b4a5a',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  goalOptionDescription: {
+    fontSize: 10,
+    color: '#5B5B5B',
+    textAlign: 'center',
+  },
+  checkmark: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
   },
 });

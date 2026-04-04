@@ -69,6 +69,19 @@ const MEAL_TYPES: Array<'Breakfast' | 'Lunch' | 'Snack' | 'Dinner'> = ['Breakfas
 
 const UNITS: Array<'grams' | 'bowls' | 'pieces'> = ['grams', 'bowls', 'pieces'];
 
+const parseOilAmountFromText = (text?: string) => {
+  if (!text) return null;
+  const match = text.match(/([0-9]*\.?[0-9]+)\s*(ml|g|gram|grams)/i);
+  if (!match) return null;
+
+  const amount = Number(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const unitRaw = match[2].toLowerCase();
+  const unit: 'ml' | 'g' = unitRaw === 'ml' ? 'ml' : 'g';
+  return { amount, unit };
+};
+
 export function FoodOilAnalyzerScreen() {
   const navigation = useNavigation();
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -230,10 +243,15 @@ export function FoodOilAnalyzerScreen() {
 
     setIsLogging(true);
     try {
+      const parsedOil = parseOilAmountFromText(nutritionData?.oilContent?.totalOil);
+      const payloadOilAmount = parsedOil?.amount || logForm.oilAmount;
+      const payloadOilUnit: 'ml' | 'g' = parsedOil?.unit || 'ml';
+
       const response = await apiService.logOilConsumption({
         foodName: logForm.foodName,
         oilType: logForm.oilType,
-        oilAmount: logForm.oilAmount,
+        oilAmount: payloadOilAmount,
+        oilAmountUnit: payloadOilUnit,
         quantity: logForm.quantity,
         unit: logForm.unit,
         mealType: logForm.mealType,
@@ -261,7 +279,14 @@ export function FoodOilAnalyzerScreen() {
         Alert.alert(
           '✅ Logged Successfully!',
           `${logForm.foodName} (${logForm.oilAmount}ml oil) has been added to your daily log.`,
-          [{ text: 'OK' }]
+          [{ 
+            text: 'OK',
+            onPress: () => {
+              // Navigate back to Home to refresh progress bars
+              console.log('🍽️ [FoodAnalyzer] Going back to Home after log. Oil amount:', logForm.oilAmount, 'ml');
+              navigation.goBack();
+            }
+          }]
         );
       } else {
         throw new Error('Failed to log');
