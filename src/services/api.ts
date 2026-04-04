@@ -391,6 +391,13 @@ class ApiService {
     });
   }
 
+  async analyzeIotOil(data: IotOilAnalysisInput): Promise<ApiResponse<IotOilAnalysisResult>> {
+    return this.request<IotOilAnalysisResult>(API_ENDPOINTS.OIL.ANALYZE_IOT_OIL, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   async getWeeklyOilStats(): Promise<ApiResponse<WeeklyStat[]>> {
     return this.request<WeeklyStat[]>(API_ENDPOINTS.OIL.WEEKLY_STATS, {
       method: 'GET',
@@ -539,6 +546,28 @@ export interface OilConsumptionEntry extends OilConsumptionLog {
   verified: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface IotOilAnalysisInput {
+  image?: string;
+  weight_grams?: number;
+  volume_ml?: number;
+  user_selected_oil?: string;
+  cooking_method: 'deep_fry' | 'shallow_fry' | 'saute' | 'boil';
+  reuse_count: number;
+  dish?: string;
+}
+
+export interface IotOilAnalysisResult {
+  oil_type: string;
+  confidence: number;
+  input_type: 'weight' | 'volume';
+  normalized_volume_ml: number;
+  final_adjusted_volume_ml: number;
+  calories: number;
+  health_score: number;
+  feedback: string;
+  suggestion: string;
 }
 
 export interface OilTotalsSummary {

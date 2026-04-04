@@ -440,6 +440,227 @@ function toOilAmountGrams(amount, unit) {
   return normalizedUnit === 'ml' ? numericAmount * 0.92 : numericAmount;
 }
 
+const IOT_OIL_DENSITY = {
+  mustard_oil: 0.91,
+  sunflower_oil: 0.92,
+  olive_oil: 0.91,
+  coconut_oil: 0.92,
+  ghee: 0.96,
+};
+
+const IOT_METHOD_FACTOR = {
+  deep_fry: 1.25,
+  shallow_fry: 1.15,
+  saute: 1.05,
+  boil: 1.0,
+};
+
+const IOT_HEALTH_SCORE = {
+  mustard_oil: 7,
+  sunflower_oil: 6,
+  olive_oil: 8,
+  coconut_oil: 5,
+  ghee: 4,
+};
+
+const KNOWN_OILS = Object.keys(IOT_OIL_DENSITY);
+
+function normalizeOilType(rawOil = '') {
+  const oil = String(rawOil || '').trim().toLowerCase();
+  if (!oil) return '';
+
+  if (oil.includes('mustard')) return 'mustard_oil';
+  if (oil.includes('sunflower')) return 'sunflower_oil';
+  if (oil.includes('olive')) return 'olive_oil';
+  if (oil.includes('coconut')) return 'coconut_oil';
+  if (oil.includes('ghee')) return 'ghee';
+
+  return KNOWN_OILS.includes(oil) ? oil : '';
+}
+
+function round2(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function buildIotSuggestion({ oilType, finalVolumeMl, recommendedMl, cookingMethod }) {
+  const overBy = finalVolumeMl - recommendedMl;
+  const reducePercent = overBy > 0 ? Math.min(60, Math.max(10, Math.round((overBy / finalVolumeMl) * 100))) : 0;
+
+  const methodSuggestion = cookingMethod === 'deep_fry'
+    ? 'Switch to saute or shallow-fry for Indian home cooking to cut absorbed oil.'
+    : cookingMethod === 'shallow_fry'
+      ? 'Try saute with a measured spoon to control oil better.'
+      : 'Continue low-oil techniques and measure oil before cooking.';
+
+  const betterOil = oilType === 'ghee' || oilType === 'coconut_oil'
+    ? 'Consider mustard_oil or olive_oil for better fatty-acid balance in daily cooking.'
+    : '';
+
+  if (finalVolumeMl > recommendedMl) {
+    return `Reduce visible oil by about ${reducePercent}% next time. ${methodSuggestion}${betterOil ? ` ${betterOil}` : ''}`;
+  }
+
+  return `Good control on visible oil. ${methodSuggestion}${betterOil ? ` ${betterOil}` : ''}`;
+}
+
+async function detectOilFromImage(base64Image) {
+  try {
+    if (!base64Image || typeof base64Image !== 'string') {
+      return { oil_type: '', brand: '', confidence: 0 };
+    }
+
+    if (!process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
+      return { oil_type: '', brand: '', confidence: 0 };
+    }
+
+    const prompt = `Detect edible oil from this image and return ONLY valid JSON:
+{
+  "oil_type": "mustard_oil|sunflower_oil|olive_oil|coconut_oil|ghee|unknown",
+  "brand": "string",
+  "confidence": number
+}
+Rules:
+- confidence must be between 0 and 1
+- if uncertain, set oil_type to "unknown" and confidence below 0.8`;
+
+    const providerResult = await callOpenRouterWithFallback({
+      title: 'SwasthTel IoT Oil Detector',
+      payload: {
+        model: 'google/gemini-2.0-flash-001',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 256,
+        temperature: 0.1
+      }
+    });
+
+    if (!providerResult.ok) {
+      return { oil_type: '', brand: '', confidence: 0 };
+    }
+
+    const generatedText = providerResult?.json?.choices?.[0]?.message?.content;
+    if (!generatedText) {
+      return { oil_type: '', brand: '', confidence: 0 };
+    }
+
+    const parsed = parseJsonObject(generatedText);
+    const normalizedOilType = normalizeOilType(parsed?.oil_type);
+    const confidence = Math.max(0, Math.min(1, Number(parsed?.confidence) || 0));
+
+    return {
+      oil_type: normalizedOilType,
+      brand: String(parsed?.brand || '').trim(),
+      confidence,
+    };
+  } catch (error) {
+    return { oil_type: '', brand: '', confidence: 0 };
+  }
+}
+
+exports.analyzeIotOil = async (req, res) => {
+  try {
+    const {
+      image,
+      weight_grams,
+      volume_ml,
+      user_selected_oil,
+      cooking_method,
+      reuse_count,
+      dish,
+    } = req.body || {};
+
+    const parsedWeight = Number(weight_grams);
+    const parsedVolume = Number(volume_ml);
+    const hasWeight = Number.isFinite(parsedWeight) && parsedWeight > 0;
+    const hasVolume = Number.isFinite(parsedVolume) && parsedVolume > 0;
+
+    if (!hasWeight && !hasVolume) {
+      return res.status(400).json({
+        success: false,
+        message: 'Either weight_grams or volume_ml must be provided',
+      });
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(IOT_METHOD_FACTOR, cooking_method)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid cooking_method. Use deep_fry, shallow_fry, saute, or boil',
+      });
+    }
+
+    const parsedReuseCount = Math.max(0, Math.floor(Number(reuse_count) || 0));
+
+    const detected = await detectOilFromImage(image);
+    let oilType = '';
+    let confidence = 0;
+
+    if (detected.oil_type && detected.confidence >= 0.8) {
+      oilType = detected.oil_type;
+      confidence = detected.confidence;
+    } else {
+      const selected = normalizeOilType(user_selected_oil);
+      oilType = selected || 'sunflower_oil';
+      confidence = detected.confidence || (selected ? 0.79 : 0.5);
+    }
+
+    const density = IOT_OIL_DENSITY[oilType] || IOT_OIL_DENSITY.sunflower_oil;
+    const inputType = hasWeight ? 'weight' : 'volume';
+    const normalizedVolumeMl = hasWeight ? (parsedWeight / density) : parsedVolume;
+
+    const methodFactor = IOT_METHOD_FACTOR[cooking_method] || 1;
+    const reuseFactor = 1 + (0.02 * parsedReuseCount);
+    const finalAdjustedVolumeMl = normalizedVolumeMl * methodFactor * reuseFactor;
+    const calories = finalAdjustedVolumeMl * 9;
+    const healthScore = IOT_HEALTH_SCORE[oilType] || 6;
+
+    const recommendedPerMealMl = 10;
+    const feedback = finalAdjustedVolumeMl > recommendedPerMealMl
+      ? 'You used more oil than recommended'
+      : 'Healthy oil usage';
+
+    const suggestion = buildIotSuggestion({
+      oilType,
+      finalVolumeMl: finalAdjustedVolumeMl,
+      recommendedMl: recommendedPerMealMl,
+      cookingMethod: cooking_method,
+      dish,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        oil_type: oilType,
+        confidence: round2(confidence),
+        input_type: inputType,
+        normalized_volume_ml: round2(normalizedVolumeMl),
+        final_adjusted_volume_ml: round2(finalAdjustedVolumeMl),
+        calories: round2(calories),
+        health_score: healthScore,
+        feedback,
+        suggestion,
+      }
+    });
+  } catch (error) {
+    console.error('[IoTOilAnalyzer] Error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to analyze oil usage',
+    });
+  }
+};
+
 // Log oil consumption
 exports.logConsumption = async (req, res, next) => {
   try {

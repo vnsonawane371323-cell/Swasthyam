@@ -108,6 +108,7 @@ export const API_ENDPOINTS = {
     LOG: '/oil/log',
     LOG_GROUP: '/oil/log-group',
     ANALYZE_FOOD: '/oil/analyze-food',
+    ANALYZE_IOT_OIL: '/oil/analyze-iot-oil',
     ENTRIES: '/oil/entries',
     TODAY: '/oil/today',
     WEEKLY_STATS: '/oil/stats/weekly',

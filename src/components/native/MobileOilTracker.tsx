@@ -70,6 +70,19 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
   }>>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isPairing, setIsPairing] = useState(false);
+  const [iotDish, setIotDish] = useState('');
+  const [iotMealType, setIotMealType] = useState<'Breakfast' | 'Lunch' | 'Snack' | 'Dinner'>('Lunch');
+  const [iotCookingMethod, setIotCookingMethod] = useState<'deep_fry' | 'shallow_fry' | 'saute' | 'boil'>('saute');
+  const [iotReuseCount, setIotReuseCount] = useState('0');
+  const [iotSelectedOil, setIotSelectedOil] = useState('');
+  const [iotReadingInputType, setIotReadingInputType] = useState<'weight' | 'volume'>('weight');
+  const [iotLastAnalysis, setIotLastAnalysis] = useState<null | {
+    oilType: string;
+    finalMl: number;
+    calories: number;
+    feedback: string;
+    suggestion: string;
+  }>(null);
   
   // Group logging state
   const [adminGroups, setAdminGroups] = useState<any[]>([]);
@@ -596,6 +609,82 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
     }
   };
 
+  const handleIotLog = async () => {
+    try {
+      const primaryDevice = iotDevices.find(d => d.status === 'connected' && typeof d.latestReading === 'number');
+      const readingValue = Number(primaryDevice?.latestReading ?? 0);
+
+      if (!Number.isFinite(readingValue) || readingValue <= 0) {
+        Alert.alert('No IoT Reading', 'Please sync your device first to fetch a valid reading.');
+        return;
+      }
+
+      setIsLoading(true);
+
+      const analyzePayload: any = {
+        cooking_method: iotCookingMethod,
+        reuse_count: Math.max(0, Math.floor(Number(iotReuseCount) || 0)),
+        dish: iotDish.trim() || 'IoT Logged Oil',
+      };
+
+      if (iotSelectedOil.trim()) {
+        analyzePayload.user_selected_oil = iotSelectedOil.trim();
+      }
+
+      if (iotReadingInputType === 'weight') {
+        analyzePayload.weight_grams = readingValue;
+      } else {
+        analyzePayload.volume_ml = readingValue;
+      }
+
+      const analysisResponse = await apiService.analyzeIotOil(analyzePayload);
+      if (!analysisResponse.success || !analysisResponse.data) {
+        Alert.alert('Error', analysisResponse.message || 'Failed to analyze IoT oil usage.');
+        return;
+      }
+
+      const analysis = analysisResponse.data;
+      const dateOnly = logDate.toISOString().split('T')[0];
+      const consumedAt = `${dateOnly}T12:00:00Z`;
+
+      const logResponse = await apiService.logOilConsumption({
+        foodName: iotDish.trim() || 'IoT Logged Oil',
+        oilType: analysis.oil_type,
+        oilAmount: analysis.final_adjusted_volume_ml,
+        quantity: 1,
+        unit: 'pieces',
+        mealType: iotMealType,
+        consumedAt,
+        totalCalories: Math.round(analysis.calories),
+        oilCalories: Math.round(analysis.calories),
+      });
+
+      if (!logResponse.success) {
+        Alert.alert('Error', logResponse.message || 'Failed to log IoT consumption.');
+        return;
+      }
+
+      setIotLastAnalysis({
+        oilType: analysis.oil_type,
+        finalMl: analysis.final_adjusted_volume_ml,
+        calories: analysis.calories,
+        feedback: analysis.feedback,
+        suggestion: analysis.suggestion,
+      });
+
+      await loadEntries();
+      Alert.alert(
+        'IoT Oil Logged',
+        `${analysis.feedback}\n\nLogged: ${analysis.final_adjusted_volume_ml.toFixed(1)} ml (${Math.round(analysis.calories)} kcal)\nSuggestion: ${analysis.suggestion}`
+      );
+    } catch (error) {
+      console.error('IoT log error:', error);
+      Alert.alert('Error', 'Failed to log IoT oil usage.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
 
   return (
@@ -852,6 +941,131 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
                     </Text>
                   </View>
                 </View>
+              </CardContent>
+            </Card>
+
+            <Card style={styles.logCard}>
+              <CardContent style={styles.logContent}>
+                <View style={styles.logHeader}>
+                  <Text style={styles.logTitle}>Log Oil from IoT</Text>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Latest Sensor Reading</Text>
+                  <Text style={styles.iotDeviceLastSync}>
+                    {(() => {
+                      const reading = iotDevices.find(d => d.status === 'connected' && typeof d.latestReading === 'number')?.latestReading;
+                      return typeof reading === 'number' ? `${reading} (${iotReadingInputType === 'weight' ? 'grams' : 'ml'})` : 'No synced reading available';
+                    })()}
+                  </Text>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Reading Type</Text>
+                  <View style={styles.mealTypeButtons}>
+                    <TouchableOpacity
+                      style={[styles.mealButton, iotReadingInputType === 'weight' && styles.mealButtonActive]}
+                      onPress={() => setIotReadingInputType('weight')}
+                    >
+                      <Text style={[styles.mealButtonText, iotReadingInputType === 'weight' && styles.mealButtonTextActive]}>
+                        Weight (g)
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.mealButton, iotReadingInputType === 'volume' && styles.mealButtonActive]}
+                      onPress={() => setIotReadingInputType('volume')}
+                    >
+                      <Text style={[styles.mealButtonText, iotReadingInputType === 'volume' && styles.mealButtonTextActive]}>
+                        Volume (ml)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Dish (optional)</Text>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="e.g., Aloo Sabzi"
+                    value={iotDish}
+                    onChangeText={setIotDish}
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Fallback Oil (optional)</Text>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="mustard_oil / sunflower_oil / olive_oil / coconut_oil / ghee"
+                    value={iotSelectedOil}
+                    onChangeText={setIotSelectedOil}
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Cooking Method</Text>
+                  <View style={styles.mealTypeButtons}>
+                    {[
+                      { key: 'deep_fry', label: 'Deep Fry' },
+                      { key: 'shallow_fry', label: 'Shallow Fry' },
+                      { key: 'saute', label: 'Saute' },
+                      { key: 'boil', label: 'Boil' },
+                    ].map((method) => (
+                      <TouchableOpacity
+                        key={method.key}
+                        style={[styles.mealButton, iotCookingMethod === method.key && styles.mealButtonActive]}
+                        onPress={() => setIotCookingMethod(method.key as any)}
+                      >
+                        <Text style={[styles.mealButtonText, iotCookingMethod === method.key && styles.mealButtonTextActive]}>
+                          {method.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Reuse Count</Text>
+                  <TextInput
+                    style={styles.quantityInput}
+                    keyboardType="numeric"
+                    value={iotReuseCount}
+                    onChangeText={setIotReuseCount}
+                    placeholder="0"
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>Meal Type</Text>
+                  <View style={styles.mealTypeButtons}>
+                    {['Breakfast', 'Lunch', 'Snack', 'Dinner'].map((meal) => (
+                      <TouchableOpacity
+                        key={meal}
+                        style={[styles.mealButton, iotMealType === meal && styles.mealButtonActive]}
+                        onPress={() => setIotMealType(meal as 'Breakfast' | 'Lunch' | 'Snack' | 'Dinner')}
+                      >
+                        <Text style={[styles.mealButtonText, iotMealType === meal && styles.mealButtonTextActive]}>
+                          {meal}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {iotLastAnalysis && (
+                  <View style={styles.warningCard}>
+                    <Text style={styles.warningText}>
+                      Last analysis: {iotLastAnalysis.oilType}, {iotLastAnalysis.finalMl.toFixed(1)} ml, {Math.round(iotLastAnalysis.calories)} kcal.
+                    </Text>
+                    <Text style={styles.warningText}>{iotLastAnalysis.feedback}</Text>
+                    <Text style={styles.warningText}>{iotLastAnalysis.suggestion}</Text>
+                  </View>
+                )}
+
+                <Button onPress={handleIotLog} style={styles.saveButton}>
+                  {isLoading ? 'Processing...' : 'Analyze + Log IoT Oil'}
+                </Button>
               </CardContent>
             </Card>
           </View>
