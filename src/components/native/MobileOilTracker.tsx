@@ -395,6 +395,20 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
       setIsLoading(true);
       const oilAmount = calculateOilAmount(selectedFood, parseFloat(quantity), unit);
       
+      // Scale totalCalories and oilCalories based on quantity
+      const scalingFactor = (() => {
+        const quantityNumber = parseFloat(quantity);
+        if (unit === 'bowls' || (unit === 'pieces' && selectedFood.countable)) {
+          return quantityNumber; // Direct multiplication for bowls/pieces
+        } else {
+          // For grams: quantity is in grams, serving is in grams
+          return quantityNumber / (selectedFood.servingGrams || 100);
+        }
+      })();
+      
+      const scaledTotalCalories = selectedFood.totalCalories ? Math.round(selectedFood.totalCalories * scalingFactor) : 0;
+      const scaledOilCalories = selectedFood.oilCalories ? Math.round(selectedFood.oilCalories * scalingFactor) : 0;
+      
       const dateOnly = logDate.toISOString().split('T')[0];
       const consumedAt = `${dateOnly}T12:00:00Z`;
 
@@ -408,6 +422,8 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
           quantity: parseFloat(quantity),
           unit,
           mealType: mealType as 'Breakfast' | 'Lunch' | 'Snack' | 'Dinner',
+          totalCalories: scaledTotalCalories,
+          oilCalories: scaledOilCalories,
         }));
 
         const response = await apiService.logGroupConsumption(selectedGroup, consumptionData);
@@ -451,6 +467,8 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
           unit,
           mealType: mealType as 'Breakfast' | 'Lunch' | 'Snack' | 'Dinner',
           consumedAt,
+          totalCalories: scaledTotalCalories,
+          oilCalories: scaledOilCalories,
         });
 
         if (response.success && response.data) {

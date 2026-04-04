@@ -1,5 +1,5 @@
 // Food Database with Oil Content based on research data
-// Format: { name, oilGrams, servingGrams, category }
+// Format: { name, oilGrams, servingGrams, category, totalCalories, oilCalories }
 
 export interface FoodItem {
   id: string;
@@ -8,68 +8,42 @@ export interface FoodItem {
   servingGrams: number; // serving size in grams
   category: 'deep_fried' | 'rich_curry' | 'gravy' | 'dal' | 'rice' | 'bread' | 'south_indian' | 'tandoori' | 'street_food';
   countable?: boolean; // like samosa, paratha
+  totalCalories?: number; // total calories per serving
+  oilCalories?: number; // calories from oil per serving
 }
 
 export const foodDatabase: FoodItem[] = [
-  // Deep Fried Items (High Oil)
-  { id: '1', name: 'Samosa', oilGrams: 15, servingGrams: 60, category: 'deep_fried', countable: true },
-  { id: '2', name: 'Pakora', oilGrams: 16, servingGrams: 80, category: 'deep_fried' },
-  { id: '3', name: 'Poori', oilGrams: 10, servingGrams: 40, category: 'deep_fried', countable: true },
-  { id: '4', name: 'Bhatura', oilGrams: 12, servingGrams: 80, category: 'deep_fried', countable: true },
-  { id: '5', name: 'Vada', oilGrams: 12, servingGrams: 50, category: 'deep_fried', countable: true },
-  { id: '6', name: 'Kachori', oilGrams: 14, servingGrams: 60, category: 'deep_fried', countable: true },
+  // User's Provided Dataset - 16 Indian Food Items
   
-  // Rich Curries (High Oil)
-  { id: '7', name: 'Butter Chicken', oilGrams: 24, servingGrams: 250, category: 'rich_curry' },
-  { id: '8', name: 'Paneer Butter Masala', oilGrams: 22, servingGrams: 200, category: 'rich_curry' },
-  { id: '9', name: 'Malai Kofta', oilGrams: 25, servingGrams: 200, category: 'rich_curry' },
-  { id: '10', name: 'Korma', oilGrams: 23, servingGrams: 250, category: 'rich_curry' },
-  { id: '11', name: 'Shahi Paneer', oilGrams: 21, servingGrams: 200, category: 'rich_curry' },
+  // Deep Fried Items
+  { id: '1', name: 'Samosa', oilGrams: 12, servingGrams: 100, category: 'deep_fried', countable: true, totalCalories: 260, oilCalories: 108 },
+  { id: '2', name: 'Pakora', oilGrams: 15, servingGrams: 100, category: 'deep_fried', totalCalories: 300, oilCalories: 135 },
+  { id: '3', name: 'Poori', oilGrams: 5, servingGrams: 25, category: 'deep_fried', countable: true, totalCalories: 110, oilCalories: 45 },
+  { id: '4', name: 'Kachori', oilGrams: 14, servingGrams: 100, category: 'deep_fried', countable: true, totalCalories: 300, oilCalories: 126 },
   
-  // Medium Oil Curries
-  { id: '12', name: 'Palak Paneer', oilGrams: 15, servingGrams: 180, category: 'gravy' },
-  { id: '13', name: 'Chole', oilGrams: 12, servingGrams: 200, category: 'gravy' },
-  { id: '14', name: 'Rajma', oilGrams: 11, servingGrams: 200, category: 'gravy' },
-  { id: '15', name: 'Kadai Paneer', oilGrams: 16, servingGrams: 200, category: 'gravy' },
-  { id: '16', name: 'Bhindi Masala', oilGrams: 13, servingGrams: 200, category: 'gravy' },
-  { id: '17', name: 'Aloo Matar', oilGrams: 10, servingGrams: 150, category: 'gravy' },
-  { id: '18', name: 'Baingan Bharta', oilGrams: 14, servingGrams: 180, category: 'gravy' },
-  
-  // Dal (Light Oil)
-  { id: '19', name: 'Dal Tadka', oilGrams: 10, servingGrams: 200, category: 'dal' },
-  { id: '20', name: 'Dal Fry', oilGrams: 11, servingGrams: 200, category: 'dal' },
-  { id: '21', name: 'Dal Makhani', oilGrams: 14, servingGrams: 200, category: 'dal' },
-  { id: '22', name: 'Sambhar', oilGrams: 8, servingGrams: 200, category: 'dal' },
-  
-  // Rice Dishes
-  { id: '23', name: 'Biryani', oilGrams: 18, servingGrams: 350, category: 'rice' },
-  { id: '24', name: 'Pulao', oilGrams: 12, servingGrams: 300, category: 'rice' },
-  { id: '25', name: 'Fried Rice', oilGrams: 14, servingGrams: 300, category: 'rice' },
-  { id: '26', name: 'Jeera Rice', oilGrams: 8, servingGrams: 250, category: 'rice' },
+  // Rica Curries & Main Dishes
+  { id: '5', name: 'Dal Tadka', oilGrams: 8, servingGrams: 200, category: 'dal', totalCalories: 220, oilCalories: 72 },
+  { id: '6', name: 'Paneer Butter Masala', oilGrams: 18, servingGrams: 250, category: 'rich_curry', totalCalories: 400, oilCalories: 162 },
+  { id: '7', name: 'Chole', oilGrams: 10, servingGrams: 250, category: 'gravy', totalCalories: 280, oilCalories: 90 },
+  { id: '8', name: 'Mixed Veg Sabzi', oilGrams: 7, servingGrams: 200, category: 'gravy', totalCalories: 180, oilCalories: 63 },
   
   // Breads
-  { id: '27', name: 'Naan', oilGrams: 6, servingGrams: 80, category: 'bread', countable: true },
-  { id: '28', name: 'Roti', oilGrams: 2, servingGrams: 40, category: 'bread', countable: true },
-  { id: '29', name: 'Chapati', oilGrams: 2, servingGrams: 40, category: 'bread', countable: true },
-  { id: '30', name: 'Paratha', oilGrams: 8, servingGrams: 60, category: 'bread', countable: true },
-  { id: '31', name: 'Aloo Paratha', oilGrams: 12, servingGrams: 150, category: 'bread', countable: true },
-  { id: '32', name: 'Kulcha', oilGrams: 6, servingGrams: 80, category: 'bread', countable: true },
+  { id: '9', name: 'Aloo Paratha', oilGrams: 10, servingGrams: 150, category: 'bread', countable: true, totalCalories: 300, oilCalories: 90 },
+  { id: '10', name: 'Roti', oilGrams: 1, servingGrams: 30, category: 'bread', countable: true, totalCalories: 80, oilCalories: 9 },
   
   // South Indian
-  { id: '33', name: 'Dosa', oilGrams: 5, servingGrams: 120, category: 'south_indian', countable: true },
-  { id: '34', name: 'Masala Dosa', oilGrams: 9, servingGrams: 200, category: 'south_indian', countable: true },
-  { id: '35', name: 'Idli', oilGrams: 1, servingGrams: 50, category: 'south_indian', countable: true },
-  { id: '36', name: 'Uttapam', oilGrams: 6, servingGrams: 150, category: 'south_indian', countable: true },
-  
-  // Tandoori/Grilled (Low Oil)
-  { id: '37', name: 'Tandoori Chicken', oilGrams: 8, servingGrams: 220, category: 'tandoori' },
-  { id: '38', name: 'Paneer Tikka', oilGrams: 9, servingGrams: 150, category: 'tandoori' },
-  { id: '39', name: 'Chicken Tikka', oilGrams: 8, servingGrams: 180, category: 'tandoori' },
+  { id: '11', name: 'Masala Dosa', oilGrams: 12, servingGrams: 250, category: 'south_indian', countable: true, totalCalories: 350, oilCalories: 108 },
   
   // Street Food
-  { id: '40', name: 'Pav Bhaji', oilGrams: 16, servingGrams: 250, category: 'street_food' },
-  { id: '41', name: 'Vada Pav', oilGrams: 12, servingGrams: 100, category: 'street_food', countable: true },
-  { id: '42', name: 'Dabeli', oilGrams: 10, servingGrams: 100, category: 'street_food', countable: true },
+  { id: '12', name: 'Vada Pav', oilGrams: 14, servingGrams: 100, category: 'street_food', countable: true, totalCalories: 290, oilCalories: 126 },
+  { id: '13', name: 'Pav Bhaji', oilGrams: 20, servingGrams: 250, category: 'street_food', totalCalories: 400, oilCalories: 180 },
+  
+  // Rice & Vegetables
+  { id: '14', name: 'Steamed Rice', oilGrams: 0, servingGrams: 200, category: 'rice', totalCalories: 200, oilCalories: 0 },
+  { id: '15', name: 'Boiled Vegetables', oilGrams: 2, servingGrams: 150, category: 'gravy', totalCalories: 100, oilCalories: 18 },
+  
+  // Tandoori
+  { id: '16', name: 'Paneer Tikka', oilGrams: 6, servingGrams: 100, category: 'tandoori', totalCalories: 260, oilCalories: 54 },
 ];
 
 // Search function

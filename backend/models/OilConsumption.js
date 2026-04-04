@@ -85,6 +85,10 @@ const oilConsumptionSchema = new mongoose.Schema({
     type: Number,
     min: [0, 'Total calories cannot be negative']
   },
+  oilCalories: {
+    type: Number,
+    min: [0, 'Oil calories cannot be negative']
+  },
   swasthIndex: {
     type: Number
   },
@@ -207,6 +211,7 @@ oilConsumptionSchema.statics.getDailyTotal = async function(userId, date = new D
         _id: null,
         totalOil: { $sum: '$oilAmount' },
         totalRawKcal: { $sum: '$rawKcal' },
+        totalOilCalories: { $sum: { $ifNull: ['$oilCalories', '$rawKcal'] } },
         totalEffKcal: { $sum: '$effectiveKcal' },
         totalCalories: { $sum: { $ifNull: ['$totalCalories', 0] } },
         count: { $sum: 1 }
@@ -218,7 +223,8 @@ oilConsumptionSchema.statics.getDailyTotal = async function(userId, date = new D
 
   const finalResult = result.length > 0 ? result[0] : { 
     totalOil: 0, 
-    totalRawKcal: 0, 
+    totalRawKcal: 0,
+    totalOilCalories: 0,
     totalEffKcal: 0, 
     totalCalories: 0,
     count: 0 

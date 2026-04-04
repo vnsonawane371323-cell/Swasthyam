@@ -135,7 +135,7 @@ function toOilAmountGrams(amount, unit) {
 // Log oil consumption
 exports.logConsumption = async (req, res, next) => {
   try {
-    const { foodName, oilType, oilAmount, oilAmountUnit, quantity, unit, mealType, members, consumedAt, sfaPercent, tfaPercent, pufaPercent, totalCalories } = req.body;
+    const { foodName, oilType, oilAmount, oilAmountUnit, quantity, unit, mealType, members, consumedAt, sfaPercent, tfaPercent, pufaPercent, totalCalories, oilCalories } = req.body;
 
     // Validate required fields
     if (!foodName || !oilType || oilAmount === undefined || !quantity || !unit || !mealType) {
@@ -167,6 +167,11 @@ exports.logConsumption = async (req, res, next) => {
     
     // If totalCalories not provided, default to rawKcal (oil calories are part of total)
     const resolvedTotalCalories = hasProvidedTotalCalories ? normalizedTotalCalories : rawKcal;
+    
+    // Use provided oilCalories if available, otherwise use calculated rawKcal
+    const normalizedOilCalories = Number(oilCalories);
+    const hasProvidedOilCalories = Number.isFinite(normalizedOilCalories) && normalizedOilCalories >= 0;
+    const resolvedOilCalories = hasProvidedOilCalories ? normalizedOilCalories : rawKcal;
 
     // Create new consumption entry
     const consumption = await OilConsumption.create({
@@ -184,6 +189,7 @@ exports.logConsumption = async (req, res, next) => {
       multiplier,
       effectiveKcal,
       totalCalories: resolvedTotalCalories,
+      oilCalories: resolvedOilCalories,
       quantity: parseFloat(quantity),
       unit,
       mealType,
@@ -249,7 +255,7 @@ exports.logGroupConsumption = async (req, res, next) => {
 
     for (const item of consumptionData) {
       try {
-        const { userId, foodName, oilType, oilAmount, oilAmountUnit, quantity, unit, mealType, consumedAt, sfaPercent, tfaPercent, pufaPercent, totalCalories } = item;
+        const { userId, foodName, oilType, oilAmount, oilAmountUnit, quantity, unit, mealType, consumedAt, sfaPercent, tfaPercent, pufaPercent, totalCalories, oilCalories } = item;
 
         // Validate required fields
         if (!userId || !foodName || !oilType || oilAmount === undefined || !quantity || !unit || !mealType) {
@@ -292,6 +298,11 @@ exports.logGroupConsumption = async (req, res, next) => {
         
         // If totalCalories not provided, default to rawKcal
         const resolvedTotalCalories = hasProvidedTotalCalories ? normalizedTotalCalories : rawKcal;
+        
+        // Use provided oilCalories if available, otherwise use calculated rawKcal
+        const normalizedOilCalories = Number(oilCalories);
+        const hasProvidedOilCalories = Number.isFinite(normalizedOilCalories) && normalizedOilCalories >= 0;
+        const resolvedOilCalories = hasProvidedOilCalories ? normalizedOilCalories : rawKcal;
 
         // Create new consumption entry
         const consumption = await OilConsumption.create({
@@ -309,6 +320,7 @@ exports.logGroupConsumption = async (req, res, next) => {
           multiplier,
           effectiveKcal,
           totalCalories: resolvedTotalCalories,
+          oilCalories: resolvedOilCalories,
           quantity: parseFloat(quantity),
           unit,
           mealType,
@@ -445,7 +457,7 @@ exports.getTodayConsumption = async (req, res, next) => {
       entries,
       dailyTotal: dailyTotal.totalOil,
       dailyTotalCalories: dailyTotal.totalCalories,
-      dailyOilCalories: dailyTotal.totalRawKcal,
+      dailyOilCalories: dailyTotal.totalOilCalories,
       dailyEffectiveCalories: dailyTotal.totalEffKcal,
       count: entries.length
     };
