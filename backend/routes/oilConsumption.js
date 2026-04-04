@@ -10,12 +10,14 @@ const {
   updateConsumption,
   computeDailyGoal,
   getUserOilStatus,
-  analyzeFoodImage
+  analyzeFoodImage,
+  analyzeBarcodeImage
 } = require('../controllers/oilConsumptionController');
 const { protect } = require('../middleware/auth');
 
 // Public endpoint for AI food image analysis
 router.post('/analyze-food', analyzeFoodImage);
+router.post('/analyze-barcode', analyzeBarcodeImage);
 
 // All routes require authentication
 router.use(protect);

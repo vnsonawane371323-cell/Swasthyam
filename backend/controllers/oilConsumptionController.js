@@ -32,6 +32,44 @@ function getFoodAnalyzerFallback() {
   };
 }
 
+function getBarcodeAnalyzerFallback() {
+  return {
+    barcode: 'UNKNOWN',
+    product_name: 'Scanned Product (Estimated)',
+    brand: 'Unknown Brand',
+    quantity: 'N/A',
+    categories: 'Food Product',
+    ingredients_text: 'Not specified',
+    image_url: '',
+    nutritional_info: {
+      energy_kcal: null,
+      fat: null,
+      saturated_fat: null,
+      trans_fat: null,
+      cholesterol: null,
+      carbohydrates: null,
+      sugars: null,
+      fiber: null,
+      proteins: null,
+      salt: null,
+      sodium: null,
+      unit: '100g',
+      polyunsaturated_fat: null
+    },
+    oil_content: 'Unknown',
+    additives: [],
+    nutriscore_grade: null,
+    nova_group: null,
+    labels: 'Edible Product',
+    fatty_acids: {
+      sfa: null,
+      tfa: null,
+      pfa: null,
+      is_food_product: true
+    }
+  };
+}
+
 function parseJsonObject(text = '') {
   let jsonText = String(text).trim();
 
@@ -746,6 +784,127 @@ Analyze this food image and return ONLY a valid JSON object with this shape:
     return res.status(200).json({
       success: true,
       data: getFoodAnalyzerFallback(),
+      message: 'Analysis service temporarily unavailable. Returned estimated fallback analysis.'
+    });
+  }
+};
+
+// Analyze barcode/product image and return product-focused nutrition estimate.
+exports.analyzeBarcodeImage = async (req, res, next) => {
+  try {
+    const { base64Image } = req.body;
+
+    if (!base64Image || typeof base64Image !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'base64Image is required'
+      });
+    }
+
+    const apiKey = process.env.OPENROUTER_OIL_SCAN_API_KEY;
+    if (!apiKey) {
+      return res.status(200).json({
+        success: true,
+        data: getBarcodeAnalyzerFallback(),
+        message: 'AI key not configured on backend. Returned estimated fallback analysis.'
+      });
+    }
+
+    const prompt = `You are a Product Information Expert with barcode scanning capabilities.
+
+Analyze this product image carefully:
+1. FIRST: Look for any barcode (EAN-13, UPC, QR code, etc.) and read the numbers
+2. THEN: Identify the product from the image, packaging, and any visible text
+
+Return ONLY a valid JSON object (no markdown, no code blocks) with this exact structure:
+{
+  "barcode": "the barcode number if visible (13 digits for EAN-13, 12 for UPC) or null if not readable",
+  "product_name": "full product name",
+  "brand": "brand/manufacturer name",
+  "quantity": "e.g., 1L, 500ml, 1kg",
+  "product_type": "e.g., Sunflower Oil, Mustard Oil, Refined Oil, Cooking Oil",
+  "categories": "e.g., Edible Oil, Cooking Oil, Food Product",
+  "ingredients": "list of ingredients if visible or known",
+  "nutritional_info": {
+    "energy_kcal": number or null,
+    "fat": number or null,
+    "saturated_fat": number or null,
+    "trans_fat": number or null,
+    "polyunsaturated_fat": number or null,
+    "carbohydrates": number or null,
+    "proteins": number or null,
+    "sodium": number or null
+  },
+  "sfa": "saturated fat value with unit (e.g., '12g') or null",
+  "tfa": "trans fat value with unit (e.g., '0g') or null",
+  "pfa": "polyunsaturated fat value with unit (e.g., '25g') or null",
+  "health_tips": ["tip1", "tip2", "tip3"],
+  "is_food_product": true
+}`;
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://swasthtel.app',
+        'X-Title': 'SwasthTel Barcode Scanner'
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.0-flash-001',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 1024,
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[BarcodeAnalyzer] OpenRouter error:', response.status, errorText.slice(0, 300));
+
+      return res.status(200).json({
+        success: true,
+        data: getBarcodeAnalyzerFallback(),
+        message: `AI provider error (${response.status}). Returned estimated fallback analysis.`
+      });
+    }
+
+    const data = await response.json();
+    const generatedText = data?.choices?.[0]?.message?.content;
+
+    if (!generatedText) {
+      return res.status(200).json({
+        success: true,
+        data: getBarcodeAnalyzerFallback(),
+        message: 'AI response was empty. Returned estimated fallback analysis.'
+      });
+    }
+
+    const parsed = parseJsonObject(generatedText);
+
+    return res.status(200).json({
+      success: true,
+      data: parsed
+    });
+  } catch (error) {
+    console.error('[BarcodeAnalyzer] Controller error:', error.message);
+
+    return res.status(200).json({
+      success: true,
+      data: getBarcodeAnalyzerFallback(),
       message: 'Analysis service temporarily unavailable. Returned estimated fallback analysis.'
     });
   }

@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { API_BASE_URL } from '../config/api';
 
 // Conditionally import FileSystem only for native platforms
 let FileSystem: any = null;
@@ -6,13 +7,9 @@ if (Platform.OS !== 'web') {
   FileSystem = require('expo-file-system/legacy');
 }
 
-// OpenRouter API Configuration
-const OPENROUTER_API_KEY = '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';
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-
 // Add console logging for debugging
 console.log('[BarcodeService] Module loaded successfully');
-console.log('[BarcodeService] Using OpenRouter AI for oil/product scanning');
+console.log('[BarcodeService] Using backend AI endpoint for oil/product scanning');
 console.log('[BarcodeService] Platform:', Platform.OS);
 
 interface BarcodeResponse {
@@ -77,122 +74,42 @@ interface SearchResponse {
 }
 
 /**
- * Scan barcode and get product details from OpenRouter AI
+ * Scan barcode and get product details from backend AI endpoint
  */
 const analyzeProductWithAI = async (base64Image: string): Promise<any> => {
-  const prompt = `You are a Product Information Expert with barcode scanning capabilities.
-
-Analyze this product image carefully:
-1. FIRST: Look for any barcode (EAN-13, UPC, QR code, etc.) and read the numbers
-2. THEN: Identify the product from the image, packaging, and any visible text
-
-Return ONLY a valid JSON object (no markdown, no code blocks) with this exact structure:
-{
-  "barcode": "the barcode number if visible (13 digits for EAN-13, 12 for UPC) or null if not readable",
-  "product_name": "full product name",
-  "brand": "brand/manufacturer name",
-  "quantity": "e.g., 1L, 500ml, 1kg",
-  "product_type": "e.g., Sunflower Oil, Mustard Oil, Refined Oil, Cooking Oil",
-  "categories": "e.g., Edible Oil, Cooking Oil, Food Product",
-  "ingredients": "list of ingredients if visible or known",
-  "nutritional_info": {
-    "energy_kcal": number or null,
-    "fat": number or null,
-    "saturated_fat": number or null,
-    "trans_fat": number or null,
-    "polyunsaturated_fat": number or null,
-    "carbohydrates": number or null,
-    "proteins": number or null,
-    "sodium": number or null
-  },
-  "sfa": "saturated fat value with unit (e.g., '12g') or null",
-  "tfa": "trans fat value with unit (e.g., '0g') or null", 
-  "pfa": "polyunsaturated fat value with unit (e.g., '25g') or null",
-  "health_tips": ["tip1", "tip2", "tip3"],
-  "is_food_product": true
-}
-
-RULES:
-- Try to read the barcode numbers from the image
-- Extract nutritional values per 100g/100ml from the label if visible
-- If you recognize the product from the image, provide accurate info
-- For Indian products, include common brand knowledge
-- If unsure about values, make reasonable estimates based on product type
-- Return ONLY the JSON object, no extra text`;
-
   try {
-    console.log('[BarcodeService] -------- OPENROUTER API CALL --------');
+    console.log('[BarcodeService] -------- BACKEND BARCODE API CALL --------');
     console.log('[BarcodeService] Image data size:', base64Image.length, 'chars');
-    
-    const response = await fetch(OPENROUTER_API_URL, {
+
+    const response = await fetch(`${API_BASE_URL}/oil/analyze-barcode`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'HTTP-Referer': 'https://swasthtel.app',
-        'X-Title': 'SwasthTel Oil Scanner',
       },
-      body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: prompt,
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`,
-                },
-              },
-            ],
-          },
-        ],
-        max_tokens: 1024,
-        temperature: 0.3,
-      }),
+      body: JSON.stringify({ base64Image }),
     });
 
-    console.log('[BarcodeService] OpenRouter response status:', response.status, response.statusText);
+    console.log('[BarcodeService] Backend response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('[BarcodeService] OpenRouter API error:', errorData.substring(0, 300));
-      throw new Error(`OpenRouter API error ${response.status}`);
+      console.error('[BarcodeService] Backend API error:', errorData.substring(0, 300));
+      throw new Error(`Backend barcode API error ${response.status}`);
     }
 
-    const data = await response.json();
-    const generatedText = data.choices?.[0]?.message?.content;
-    
-    if (!generatedText) {
-      throw new Error('No response from OpenRouter AI');
-    }
-    
-    console.log('[BarcodeService] OpenRouter response preview:', generatedText.substring(0, 200));
+    const payload = await response.json();
 
-    // Parse JSON from response
-    let jsonText = generatedText.trim();
-    if (jsonText.startsWith('```json')) {
-      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-    } else if (jsonText.startsWith('```')) {
-      jsonText = jsonText.replace(/```\n?/g, '');
-    }
-    const firstBrace = jsonText.indexOf('{');
-    const lastBrace = jsonText.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      jsonText = jsonText.slice(firstBrace, lastBrace + 1);
+    if (!payload?.success || !payload?.data) {
+      throw new Error(payload?.message || 'No response from backend barcode analyzer');
     }
 
-    const parsedData = JSON.parse(jsonText);
-    console.log('[BarcodeService] OpenRouter parsed successfully');
+    const parsedData = payload.data;
+    console.log('[BarcodeService] Backend parsed successfully');
     console.log('[BarcodeService] Detected barcode:', parsedData.barcode);
     console.log('[BarcodeService] Product name:', parsedData.product_name);
     return parsedData;
   } catch (error: any) {
-    console.error('[BarcodeService] OpenRouter analysis error:', error.message);
+    console.error('[BarcodeService] Backend barcode analysis error:', error.message);
     throw error;
   }
 };
@@ -205,7 +122,7 @@ export const scanBarcodeImage = async (imageUri: string): Promise<BarcodeRespons
     console.log('[BarcodeService] ========== SCAN START ==========');
     console.log('[BarcodeService] scanBarcodeImage called with:', imageUri);
     console.log('[BarcodeService] Platform:', Platform.OS);
-    console.log('[BarcodeService] Using OpenRouter AI for barcode detection and product analysis');
+    console.log('[BarcodeService] Using backend API for barcode detection and product analysis');
     
     // Read image as base64
     let base64Image: string;
@@ -253,12 +170,12 @@ export const scanBarcodeImage = async (imageUri: string): Promise<BarcodeRespons
     // Extract raw base64 data (remove data URL prefix)
     const rawBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
     
-    // Use OpenRouter AI to detect barcode and get product details
-    console.log('[BarcodeService] Sending to OpenRouter AI for analysis...');
+    // Use backend AI endpoint to detect barcode and get product details
+    console.log('[BarcodeService] Sending image to backend barcode analyzer...');
     
     try {
       const aiData = await analyzeProductWithAI(rawBase64);
-      console.log('[BarcodeService] ✓ OpenRouter AI analysis complete');
+      console.log('[BarcodeService] ✓ Backend barcode analysis complete');
       
       const detectedBarcode = aiData.barcode || 'UNKNOWN';
       
@@ -323,7 +240,7 @@ export const scanBarcodeImage = async (imageUri: string): Promise<BarcodeRespons
         ],
       };
     } catch (aiError: any) {
-      console.warn('[BarcodeService] OpenRouter AI failed:', aiError.message);
+      console.warn('[BarcodeService] Backend barcode analyzer failed:', aiError.message);
       
       return {
         success: false,
