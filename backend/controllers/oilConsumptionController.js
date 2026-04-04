@@ -4,6 +4,7 @@ const RollingScore = require('../models/RollingScore');
 const Group = require('../models/Group');
 const User = require('../models/User');
 const { getRawOilKcal, getMultiplier, getEffectiveKcal } = require('../utils/oilCalorieUtils');
+const swasthnaniService = require('../services/swasthnaniService');
 
 function getFoodAnalyzerFallback() {
   return {
@@ -732,6 +733,21 @@ exports.logConsumption = async (req, res, next) => {
     // Get status
     const status = dailyGoal.getStatus();
 
+    // Get user's health status for personalized message
+    const user = await User.findById(req.user._id);
+    const userHealthStatus = user.healthStatus || 'normal';
+
+    // Generate Swasthnani message
+    const swasthnaniMessage = swasthnaniService.generateMealLoggingMessage({
+      oilAmount: oilAmountGrams,
+      foodName,
+      mealType,
+      oilType,
+      harmScore,
+      dailyStatus: status,
+      userHealthStatus
+    });
+
     res.status(201).json({
       success: true,
       message: 'Oil consumption logged successfully',
@@ -742,7 +758,8 @@ exports.logConsumption = async (req, res, next) => {
         multiplier,
         effectiveKcal,
         totalCalories: resolvedTotalCalories,
-        ...status
+        ...status,
+        swasthnaniMessage
       }
     });
   } catch (error) {
