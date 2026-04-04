@@ -227,6 +227,22 @@ export function FoodOilAnalyzerScreen() {
     }
   };
 
+  const openManualEntry = () => {
+    // Open log modal with empty/default form for manual entry (NO AI)
+    setLogForm({
+      foodName: '',
+      oilType: 'Vegetable Oil',
+      oilAmount: 0,
+      quantity: 1,
+      unit: 'pieces',
+      mealType: getCurrentMealType(),
+    });
+    setImageUri(null);
+    setNutritionData(null);
+    setError(null);
+    setShowLogModal(true);
+  };
+
   const getCurrentMealType = (): 'Breakfast' | 'Lunch' | 'Snack' | 'Dinner' => {
     const hour = new Date().getHours();
     if (hour >= 5 && hour < 11) return 'Breakfast';
@@ -536,6 +552,20 @@ export function FoodOilAnalyzerScreen() {
               >
                 <Ionicons name="images" size={32} color="#fff" />
                 <Text style={styles.actionButtonText}>Gallery</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionButton}
+              onPress={openManualEntry}
+              disabled={isAnalyzing}
+            >
+              <LinearGradient
+                colors={['#f59e0b', '#d97706']}
+                style={styles.actionButtonGradient}
+              >
+                <Ionicons name="create" size={32} color="#fff" />
+                <Text style={styles.actionButtonText}>Manual Entry</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
