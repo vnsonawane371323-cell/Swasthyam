@@ -413,12 +413,23 @@ exports.getTodayConsumption = async (req, res, next) => {
     const end = new Date(dateParam);
     end.setHours(23, 59, 59, 999);
 
+    console.log('🛢️ [getTodayConsumption] CALLED');
+    console.log('🛢️ [getTodayConsumption] req.query.date:', req.query.date);
+    console.log('🛢️ [getTodayConsumption] Searching for entries between:', start.toISOString(), 'and', end.toISOString());
+
     const entries = await OilConsumption.find({
       userId: req.user._id,
       consumedAt: { $gte: start, $lte: end }
     })
     .sort({ consumedAt: -1 })
     .lean();
+
+    console.log('🛢️ [getTodayConsumption] Found entries:', entries.length);
+    if (entries.length > 0) {
+      entries.forEach((entry, idx) => {
+        console.log(`  Entry ${idx}: consumedAt=${entry.consumedAt}, rawKcal=${entry.rawKcal}`);
+      });
+    }
 
     const dailyTotal = await OilConsumption.getDailyTotal(req.user._id, dateParam);
     
