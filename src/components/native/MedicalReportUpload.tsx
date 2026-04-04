@@ -51,6 +51,11 @@ interface MedicalReportAnalysis {
     why_it_matters: string;
     suggested_action: string;
   }>;
+  lifestyle_guidance?: Array<{
+    title: string;
+    description: string;
+    action_points: string[];
+  }>;
 }
 
 export function MedicalReportUpload() {
@@ -263,6 +268,7 @@ function MedicalReportDashboard({
   const riskLevel = getRiskLevel(analysis.health_score);
   const scoreFactors = analysis.health_score_details?.factors || [];
   const oilImpactFactors = analysis.oil_impact_factors || [];
+  const lifestyleGuidance = analysis.lifestyle_guidance || [];
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -457,6 +463,37 @@ function MedicalReportDashboard({
         ) : (
           <Text style={styles.emptyStateText}>
             No specific oil-impact factors were detected from this report.
+          </Text>
+        )}
+      </View>
+
+      {/* Lifestyle Guidance */}
+      <View style={styles.dashboardCard}>
+        <View style={styles.cardHeader}>
+          <Ionicons name="heart" size={24} color="#0f766e" />
+          <Text style={styles.cardTitle}>Lifestyle & Oil Health Plan</Text>
+        </View>
+
+        {lifestyleGuidance.length > 0 ? (
+          <View style={styles.guidanceList}>
+            {lifestyleGuidance.map((item, index) => (
+              <View key={`${item.title}-${index}`} style={styles.guidanceCard}>
+                <Text style={styles.guidanceTitle}>{item.title}</Text>
+                <Text style={styles.guidanceDescription}>{item.description}</Text>
+                <View style={styles.guidancePoints}>
+                  {(item.action_points || []).map((point, pointIndex) => (
+                    <View key={`${item.title}-point-${pointIndex}`} style={styles.guidancePointRow}>
+                      <View style={styles.guidanceBullet} />
+                      <Text style={styles.guidancePointText}>{point}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.emptyStateText}>
+            Lifestyle suggestions are not available for this report yet.
           </Text>
         )}
       </View>
@@ -982,6 +1019,57 @@ const styles = StyleSheet.create({
     color: '#075985',
     fontWeight: '700',
     marginTop: 2,
+  },
+
+  guidanceList: {
+    gap: 12,
+  },
+
+  guidanceCard: {
+    backgroundColor: '#ecfeff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    padding: 12,
+  },
+
+  guidanceTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+
+  guidanceDescription: {
+    fontSize: 13,
+    color: '#334155',
+    marginBottom: 8,
+    lineHeight: 18,
+  },
+
+  guidancePoints: {
+    gap: 6,
+  },
+
+  guidancePointRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+
+  guidanceBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginTop: 6,
+    backgroundColor: '#0ea5e9',
+  },
+
+  guidancePointText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#0f172a',
   },
 
   emptyStateText: {

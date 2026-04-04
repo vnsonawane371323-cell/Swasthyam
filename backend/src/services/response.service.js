@@ -5,6 +5,54 @@ function buildResponse(ruleResult, aiResult, paramsList) {
   return null;
 }
 
+function buildLifestyleGuidance({ riskLevel, oilLimit, preferredOils, avoidOils, recommendations }) {
+  const safeRisk = String(riskLevel || 'Moderate');
+  const safeOilLimit = Number.isFinite(Number(oilLimit)) ? Number(oilLimit) : 25;
+  const preferred = Array.isArray(preferredOils) ? preferredOils : [];
+  const avoid = Array.isArray(avoidOils) ? avoidOils : [];
+  const recs = Array.isArray(recommendations) ? recommendations : [];
+
+  const base = [
+    {
+      title: 'Daily Oil Discipline',
+      description: `Keep daily cooking oil near ${safeOilLimit} ml and avoid unmeasured pouring.`,
+      action_points: [
+        'Use a measuring spoon for every meal.',
+        'Split oil budget across breakfast, lunch, and dinner.',
+        'Avoid reusing deep-fry oil more than once.',
+      ],
+    },
+    {
+      title: 'Oil Quality Strategy',
+      description: 'Improve fatty-acid profile by rotating oils and prioritizing unsaturated oils.',
+      action_points: [
+        preferred.length > 0 ? `Prefer: ${preferred.join(', ')}` : 'Prefer mustard, groundnut, sesame, or olive oil based on cooking style.',
+        avoid.length > 0 ? `Limit/Avoid: ${avoid.join(', ')}` : 'Limit hydrogenated and repeatedly heated oils.',
+        'Use shallow-cook, steam, saute, or grill more often than deep-frying.',
+      ],
+    },
+    {
+      title: 'Lifestyle Maintenance',
+      description: `For ${safeRisk.toLowerCase()} risk profile, consistency matters more than short bursts of strict diet.`,
+      action_points: [
+        'Walk 30-45 minutes most days of the week.',
+        'Plan weekly meals to reduce outside fried food frequency.',
+        'Repeat key blood tests in 8-12 weeks and track changes.',
+      ],
+    },
+  ];
+
+  if (recs.length > 0) {
+    base.push({
+      title: 'Personalized Follow-up',
+      description: 'These recommendations are derived from your report findings.',
+      action_points: recs.slice(0, 3),
+    });
+  }
+
+  return base;
+}
+
 function fromAIOnly(ai) {
   const oil = ai.oil_recommendation || {};
   const healthScore = ai.health_score ?? 50;
@@ -56,6 +104,13 @@ function fromAIOnly(ai) {
       factors: normalizedFactors,
     },
     oil_impact_factors: normalizedOilImpact,
+    lifestyle_guidance: buildLifestyleGuidance({
+      riskLevel: ai.risk_level || 'Moderate',
+      oilLimit: oil.daily_ml ?? 25,
+      preferredOils: oil.preferred_oils || [],
+      avoidOils: oil.avoid_oils || [],
+      recommendations: ai.recommendations || [],
+    }),
   };
 }
 
@@ -91,6 +146,13 @@ function fromRuleOnly(rule, paramsList) {
       factors: normalizedFactors,
     },
     oil_impact_factors: normalizedOilImpact,
+    lifestyle_guidance: buildLifestyleGuidance({
+      riskLevel: rule.riskLevel,
+      oilLimit: rule.oilLimit,
+      preferredOils: rule.preferredOils,
+      avoidOils: rule.avoidOils,
+      recommendations: rule.recommendations,
+    }),
   };
 }
 
@@ -152,6 +214,13 @@ function merge(rule, ai, paramsList) {
       factors: mergedFactors,
     },
     oil_impact_factors: mergedOilFactors,
+    lifestyle_guidance: buildLifestyleGuidance({
+      riskLevel: rule.riskLevel,
+      oilLimit: rule.oilLimit,
+      preferredOils: (Array.isArray(aiOil.preferred_oils) && aiOil.preferred_oils.length > 0) ? aiOil.preferred_oils : rule.preferredOils,
+      avoidOils: (Array.isArray(aiOil.avoid_oils) && aiOil.avoid_oils.length > 0) ? aiOil.avoid_oils : rule.avoidOils,
+      recommendations: (Array.isArray(ai.recommendations) && ai.recommendations.length > 0) ? ai.recommendations : rule.recommendations,
+    }),
   };
 }
 

@@ -103,7 +103,7 @@ export interface FoodNutritionData {
 
 class ApiService {
   private token: string | null = null;
-  private timeout: number = 45000; // 45 second timeout for slower mobile networks
+  private timeout: number = 90000; // 90 second timeout for report upload + AI analysis
 
   setToken(token: string | null) {
     this.token = token;
@@ -226,13 +226,19 @@ class ApiService {
 
       clearTimeout(timeoutId);
 
-      const responseData = await response.json();
+      const rawText = await response.text();
+      let responseData: any = null;
+      try {
+        responseData = rawText ? JSON.parse(rawText) : {};
+      } catch {
+        responseData = { message: rawText || 'Unexpected server response' };
+      }
       console.log(`[API] Response:`, responseData);
 
       if (!response.ok) {
         return {
           success: false,
-          message: responseData.message || 'An error occurred',
+          message: responseData.message || `Request failed with status ${response.status}`,
           errors: responseData.errors,
         };
       }
