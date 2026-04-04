@@ -16,7 +16,7 @@ import { Alert } from 'react-native';
 
 export interface HelpNotification {
   id: string;
-  type: 'help-tip' | 'learning-reminder' | 'health-alert' | 'oil-reminder' | 'medical-reminder' | 'cooking-tip' | 'iot-guide' | 'calculation-help';
+  type: 'help-tip' | 'learning-reminder' | 'health-alert' | 'oil-reminder' | 'medical-reminder' | 'cooking-tip' | 'iot-guide' | 'calculation-help' | 'swasthnani-message';
   category: 'getting-started' | 'oil-tracking' | 'cooking-methods' | 'oil-types' | 'calculations' | 'iot-tracker' | 'medical-reports' | 'faq';
   title: string;
   message: string;
@@ -568,6 +568,44 @@ class HelpNotificationsService {
     } catch (error) {
       console.error('[HelpNotificationsService] Failed to save preferences:', error);
     }
+  }
+
+  // Swasthnani Message Handler
+  async sendSwasthnaniMessage(swasthnaniMessage: any): Promise<HelpNotification> {
+    try {
+      const notification: HelpNotification = {
+        id: Date.now().toString(),
+        type: 'swasthnani-message',
+        category: 'oil-tracking',
+        title: swasthnaniMessage.title || 'Swasthnani Says',
+        message: swasthnaniMessage.message || '',
+        actionText: swasthnaniMessage.actionText,
+        actionScreen: swasthnaniMessage.actionScreen,
+        timestamp: Date.now(),
+        read: false,
+        priority: this.getTonePriority(swasthnaniMessage.tone),
+      };
+
+      await this.storeNotification(notification);
+      this.notifySubscribers(notification);
+
+      return notification;
+    } catch (error) {
+      console.error('[HelpNotificationsService] Failed to send Swasthnani message:', error);
+      throw error;
+    }
+  }
+
+  // Convert tone to priority
+  private getTonePriority(tone: string): 'low' | 'medium' | 'high' {
+    const priorities: any = {
+      'positive': 'low',
+      'caution': 'medium',
+      'warning': 'high',
+      'critical': 'high',
+      'neutral': 'low',
+    };
+    return priorities[tone] || 'low';
   }
 
   // Clear all notifications
