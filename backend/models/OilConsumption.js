@@ -192,6 +192,9 @@ oilConsumptionSchema.statics.getDailyTotal = async function(userId, date = new D
   const endOfDay = new Date(date);
   endOfDay.setHours(23, 59, 59, 999);
 
+  console.log('🛢️ [getDailyTotal] Aggregating for userId:', userId.toString());
+  console.log('🛢️ [getDailyTotal] Date range:', startOfDay.toISOString(), 'to', endOfDay.toISOString());
+
   const result = await this.aggregate([
     {
       $match: {
@@ -211,13 +214,19 @@ oilConsumptionSchema.statics.getDailyTotal = async function(userId, date = new D
     }
   ]);
 
-  return result.length > 0 ? result[0] : { 
+  console.log('🛢️ [getDailyTotal] Aggregation result:', result);
+
+  const finalResult = result.length > 0 ? result[0] : { 
     totalOil: 0, 
     totalRawKcal: 0, 
     totalEffKcal: 0, 
     totalCalories: 0,
     count: 0 
   };
+
+  console.log('🛢️ [getDailyTotal] Returning:', finalResult);
+
+  return finalResult;
 };
 
 // Method to get weekly stats
