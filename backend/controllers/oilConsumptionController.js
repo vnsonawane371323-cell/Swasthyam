@@ -748,10 +748,9 @@ exports.analyzeFoodImage = async (req, res, next) => {
     }
 
     if (!process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
-      return res.status(200).json({
-        success: true,
-        data: getFoodAnalyzerFallback(),
-        message: 'AI key not configured on backend. Returned estimated fallback analysis.'
+      return res.status(503).json({
+        success: false,
+        message: 'Services are down'
       });
     }
 
@@ -804,10 +803,9 @@ Analyze this food image and return ONLY a valid JSON object with this shape:
     if (!providerResult.ok) {
       console.error('[FoodAnalyzer] OpenRouter error:', providerResult.status, String(providerResult.text || '').slice(0, 300));
 
-      return res.status(200).json({
-        success: true,
-        data: getFoodAnalyzerFallback(),
-        message: `AI provider error (${providerResult.status}). Returned estimated fallback analysis.`
+      return res.status(503).json({
+        success: false,
+        message: 'Services are down'
       });
     }
 
@@ -815,10 +813,9 @@ Analyze this food image and return ONLY a valid JSON object with this shape:
     const generatedText = data?.choices?.[0]?.message?.content;
 
     if (!generatedText) {
-      return res.status(200).json({
-        success: true,
-        data: getFoodAnalyzerFallback(),
-        message: 'AI response was empty. Returned estimated fallback analysis.'
+      return res.status(503).json({
+        success: false,
+        message: 'Services are down'
       });
     }
 
@@ -831,10 +828,9 @@ Analyze this food image and return ONLY a valid JSON object with this shape:
   } catch (error) {
     console.error('[FoodAnalyzer] Controller error:', error.message);
 
-    return res.status(200).json({
-      success: true,
-      data: getFoodAnalyzerFallback(),
-      message: 'Analysis service temporarily unavailable. Returned estimated fallback analysis.'
+    return res.status(503).json({
+      success: false,
+      message: 'Services are down'
     });
   }
 };
@@ -852,10 +848,9 @@ exports.analyzeBarcodeImage = async (req, res, next) => {
     }
 
     if (!process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
-      return res.status(200).json({
-        success: true,
-        data: getBarcodeAnalyzerFallback(),
-        message: 'AI key not configured on backend. Returned estimated fallback analysis.'
+      return res.status(503).json({
+        success: false,
+        message: 'Services are down'
       });
     }
 
@@ -931,10 +926,9 @@ Swasth Index rules:
     if (!providerResult.ok) {
       console.error('[BarcodeAnalyzer] OpenRouter error:', providerResult.status, String(providerResult.text || '').slice(0, 300));
 
-      return res.status(200).json({
-        success: true,
-        data: getBarcodeAnalyzerFallback(),
-        message: `AI provider error (${providerResult.status}). Returned estimated fallback analysis.`
+      return res.status(503).json({
+        success: false,
+        message: 'Services are down'
       });
     }
 
@@ -942,10 +936,9 @@ Swasth Index rules:
     const generatedText = data?.choices?.[0]?.message?.content;
 
     if (!generatedText) {
-      return res.status(200).json({
-        success: true,
-        data: getBarcodeAnalyzerFallback(),
-        message: 'AI response was empty. Returned estimated fallback analysis.'
+      return res.status(503).json({
+        success: false,
+        message: 'Services are down'
       });
     }
 
@@ -958,10 +951,9 @@ Swasth Index rules:
   } catch (error) {
     console.error('[BarcodeAnalyzer] Controller error:', error.message);
 
-    return res.status(200).json({
-      success: true,
-      data: getBarcodeAnalyzerFallback(),
-      message: 'Analysis service temporarily unavailable. Returned estimated fallback analysis.'
+    return res.status(503).json({
+      success: false,
+      message: 'Services are down'
     });
   }
 };
