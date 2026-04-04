@@ -423,8 +423,13 @@ exports.getTodayConsumption = async (req, res, next) => {
     const dailyTotal = await OilConsumption.getDailyTotal(req.user._id, dateParam);
     
     console.log('🛢️ [Backend] getTodayConsumption for user:', req.user._id);
-    console.log('🛢️ [Backend] Date range:', start, 'to', end);
+    console.log('🛢️ [Backend] Requested date:', req.query.date);
+    console.log('🛢️ [Backend] Date range:', start.toISOString(), 'to', end.toISOString());
     console.log('🛢️ [Backend] Entries found:', entries.length);
+    if (entries.length > 0) {
+      console.log('🛢️ [Backend] First entry consumedAt:', entries[0].consumedAt);
+      console.log('🛢️ [Backend] Last entry consumedAt:', entries[entries.length - 1].consumedAt);
+    }
     console.log('🛢️ [Backend] Daily total:', dailyTotal);
 
     const responseData = {
