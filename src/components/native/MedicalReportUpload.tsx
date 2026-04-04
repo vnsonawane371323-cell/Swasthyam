@@ -22,12 +22,22 @@ interface MedicalReportAnalysis {
   health_score: number;
   oil_limit: number;
   risk_flags: string[];
+  summary?: string;
+  risk_level?: string;
   nutrition_targets: {
     protein: number;
     fat: number;
     carbs: number;
   };
   recommendations: string[];
+  detailed_analysis?: {
+    clinical_summary?: string;
+    key_findings?: string[];
+    critical_alerts?: string[];
+    oil_strategy?: string;
+    follow_up_tests?: string[];
+    doctor_discussion_points?: string[];
+  };
   health_score_details?: {
     max_score: number;
     final_score: number;
@@ -269,6 +279,7 @@ function MedicalReportDashboard({
   const scoreFactors = analysis.health_score_details?.factors || [];
   const oilImpactFactors = analysis.oil_impact_factors || [];
   const lifestyleGuidance = analysis.lifestyle_guidance || [];
+  const detailedAnalysis = analysis.detailed_analysis;
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -330,6 +341,79 @@ function MedicalReportDashboard({
               </View>
             ))}
           </View>
+        </View>
+      )}
+
+      {/* Detailed Analysis */}
+      {(analysis.summary || detailedAnalysis?.clinical_summary || (detailedAnalysis?.key_findings || []).length > 0) && (
+        <View style={styles.dashboardCard}>
+          <View style={styles.cardHeader}>
+            <Ionicons name="document-text-outline" size={24} color="#1b4a5a" />
+            <Text style={styles.cardTitle}>Detailed Report Analysis</Text>
+          </View>
+
+          {!!analysis.summary && (
+            <Text style={styles.analysisSummary}>{analysis.summary}</Text>
+          )}
+
+          {!!detailedAnalysis?.clinical_summary && (
+            <Text style={styles.analysisParagraph}>{detailedAnalysis.clinical_summary}</Text>
+          )}
+
+          {(detailedAnalysis?.key_findings || []).length > 0 && (
+            <View style={styles.analysisSection}>
+              <Text style={styles.analysisSectionTitle}>Key Findings</Text>
+              {(detailedAnalysis?.key_findings || []).map((item, index) => (
+                <View key={`finding-${index}`} style={styles.analysisRow}>
+                  <View style={styles.analysisBullet} />
+                  <Text style={styles.analysisRowText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {(detailedAnalysis?.critical_alerts || []).length > 0 && (
+            <View style={styles.analysisSection}>
+              <Text style={styles.analysisSectionTitle}>Critical Alerts</Text>
+              {(detailedAnalysis?.critical_alerts || []).map((item, index) => (
+                <View key={`alert-${index}`} style={styles.analysisRow}>
+                  <View style={[styles.analysisBullet, styles.analysisAlertBullet]} />
+                  <Text style={styles.analysisRowText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {!!detailedAnalysis?.oil_strategy && (
+            <View style={styles.analysisSection}>
+              <Text style={styles.analysisSectionTitle}>Oil Strategy</Text>
+              <Text style={styles.analysisParagraph}>{detailedAnalysis.oil_strategy}</Text>
+            </View>
+          )}
+
+          {(detailedAnalysis?.follow_up_tests || []).length > 0 && (
+            <View style={styles.analysisSection}>
+              <Text style={styles.analysisSectionTitle}>Follow-up Tests</Text>
+              {(detailedAnalysis?.follow_up_tests || []).map((item, index) => (
+                <View key={`test-${index}`} style={styles.analysisRow}>
+                  <View style={styles.analysisBullet} />
+                  <Text style={styles.analysisRowText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {(detailedAnalysis?.doctor_discussion_points || []).length > 0 && (
+            <View style={styles.analysisSection}>
+              <Text style={styles.analysisSectionTitle}>Discuss With Doctor</Text>
+              {(detailedAnalysis?.doctor_discussion_points || []).map((item, index) => (
+                <View key={`doctor-${index}`} style={styles.analysisRow}>
+                  <View style={styles.analysisBullet} />
+                  <Text style={styles.analysisRowText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -882,6 +966,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#374151',
     flex: 1,
+    lineHeight: 18,
+  },
+
+  analysisSummary: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+
+  analysisSection: {
+    marginTop: 10,
+  },
+
+  analysisSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1e3a8a',
+    marginBottom: 6,
+  },
+
+  analysisParagraph: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 19,
+  },
+
+  analysisRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
+  },
+
+  analysisBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0ea5e9',
+    marginTop: 6,
+  },
+
+  analysisAlertBullet: {
+    backgroundColor: '#dc2626',
+  },
+
+  analysisRowText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#334155',
     lineHeight: 18,
   },
 

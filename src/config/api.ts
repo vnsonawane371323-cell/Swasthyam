@@ -10,6 +10,25 @@ const normalizeApiBaseUrl = (value: string): string => {
   return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
 };
 
+const isPrivateIpv4 = (host: string): boolean => {
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    return false;
+  }
+
+  const parts = host.split('.').map(Number);
+  if (parts.some((part) => Number.isNaN(part) || part < 0 || part > 255)) {
+    return false;
+  }
+
+  // RFC1918 private ranges + loopback
+  return (
+    parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168) ||
+    (parts[0] === 127)
+  );
+};
+
 const getDevHostIp = (): string | null => {
   const hostCandidates = [
     Constants.expoConfig?.hostUri,
@@ -25,7 +44,8 @@ const getDevHostIp = (): string | null => {
       const hostPort = withoutProtocol.split('/')[0];
       const host = hostPort.split(':')[0];
 
-      if (host && host !== 'localhost' && host !== '127.0.0.1') {
+      // Avoid tunnel/public domains (e.g. *.expo.dev) for local backend calls.
+      if (host && host !== 'localhost' && host !== '127.0.0.1' && isPrivateIpv4(host)) {
         return host;
       }
     } catch {
