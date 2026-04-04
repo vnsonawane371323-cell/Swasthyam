@@ -118,6 +118,7 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   const [fat, setFat] = useState(15);
   const [carbs, setCarbs] = useState(40);
   const [fibre, setFibre] = useState(8);
+  const [reportCalorieTarget, setReportCalorieTarget] = useState<number | null>(null);
   
   // Progress tracking state
   const [totalOilSaved, setTotalOilSaved] = useState(0);
@@ -132,11 +133,50 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
     return `${year}-${month}-${day}`;
   };
 
+  const deriveReportCalorieTarget = useCallback((analysis: any): number | null => {
+    const explicitTarget = Number(analysis?.recommended_total_calories);
+    if (Number.isFinite(explicitTarget) && explicitTarget > 0) {
+      return Math.round(explicitTarget);
+    }
+
+    const proteinTarget = Number(analysis?.nutrition_targets?.protein);
+    const fatTarget = Number(analysis?.nutrition_targets?.fat);
+    const carbsTarget = Number(analysis?.nutrition_targets?.carbs);
+
+    const proteinCalories = Number.isFinite(proteinTarget) && proteinTarget > 0 ? proteinTarget * 4 : 0;
+    const fatCalories = Number.isFinite(fatTarget) && fatTarget > 0 ? fatTarget * 9 : 0;
+    const carbsCalories = Number.isFinite(carbsTarget) && carbsTarget > 0 ? carbsTarget * 4 : 0;
+
+    const derivedTotal = proteinCalories + fatCalories + carbsCalories;
+    return derivedTotal > 0 ? Math.round(derivedTotal) : null;
+  }, []);
+
+  const handleReportAnalysisComplete = useCallback((analysis: any) => {
+    const reportTarget = deriveReportCalorieTarget(analysis);
+    if (reportTarget && reportTarget > 0) {
+      setReportCalorieTarget(reportTarget);
+      setTotalCalories(reportTarget);
+    }
+
+    const proteinTarget = Number(analysis?.nutrition_targets?.protein);
+    const fatTarget = Number(analysis?.nutrition_targets?.fat);
+    const carbsTarget = Number(analysis?.nutrition_targets?.carbs);
+
+    if (Number.isFinite(proteinTarget) && proteinTarget >= 0) setProtein(Math.round(proteinTarget));
+    if (Number.isFinite(fatTarget) && fatTarget >= 0) setFat(Math.round(fatTarget));
+    if (Number.isFinite(carbsTarget) && carbsTarget >= 0) setCarbs(Math.round(carbsTarget));
+  }, [deriveReportCalorieTarget]);
+
+  const effectiveTotalCaloriesTarget =
+    typeof reportCalorieTarget === 'number' && Number.isFinite(reportCalorieTarget) && reportCalorieTarget > 0
+      ? reportCalorieTarget
+      : totalCalories;
+
   const effectiveDailyLimitCal =
     dailyLimitCal > 0
       ? dailyLimitCal
-      : totalCalories > 0
-        ? Math.max(1, Math.round(totalCalories * 0.07))
+      : effectiveTotalCaloriesTarget > 0
+        ? Math.max(1, Math.round(effectiveTotalCaloriesTarget * 0.07))
         : 0;
   const dailyConsumedCal = Math.round(dailyConsumption * 9);
   const resolvedOilConsumedCal = dailyConsumedCal > 0 ? dailyConsumedCal : Math.max(0, Math.round(selectedDayCalories));
@@ -157,8 +197,8 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   
   // Total calories fill percent = (total consumed / goal) * 100, capped at 100
   const totalCaloriesFillPercent =
-    totalCalories > 0
-      ? Math.min(100, (finalTotalConsumedCal / totalCalories) * 100)
+    effectiveTotalCaloriesTarget > 0
+      ? Math.min(100, (finalTotalConsumedCal / effectiveTotalCaloriesTarget) * 100)
       : 0;
   
   // Oil percent as portion of total consumed = (oil / total) * 100
@@ -168,7 +208,7 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
       : 0;
 
   console.log('📊 [MobileHome] Updated Calculation with constraints:');
-  console.log('  - totalCalories (goal):', totalCalories);
+  console.log('  - totalCalories (goal):', effectiveTotalCaloriesTarget);
   console.log('  - resolvedTotalConsumedCal (before constraint):', resolvedTotalConsumedCal);
   console.log('  - resolvedOilConsumedCal:', resolvedOilConsumedCal);
   console.log('  - finalTotalConsumedCal (after constraint):', finalTotalConsumedCal);
@@ -675,12 +715,17 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
           <View style={styles.caloriesBarHeader}>
             <Text style={styles.caloriesBarLabel}>Total Calories</Text>
             <Text style={styles.caloriesBarValue}>
-              {`${finalTotalConsumedCal} / ${totalCalories} cal`}
+              {`${finalTotalConsumedCal} / ${effectiveTotalCaloriesTarget} cal`}
             </Text>
           </View>
           <View style={styles.caloriesProgressBarContainer}>
             <View style={[styles.caloriesProgressBarFill, { width: `${totalCaloriesFillPercent}%` }]} />
           </View>
+          {effectiveTotalCaloriesTarget > 0 && (
+            <Text style={styles.caloriesRecommendationText}>
+              Recommended daily calories from your health report: {effectiveTotalCaloriesTarget} cal
+            </Text>
+          )}
         </View>
 
         {/* Nutrients Grid - All in one row */}
@@ -1037,7 +1082,7 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
 
       {/* Medical Report Analyzer Section */}
       <View style={styles.medicalReportSection}>
-        <MedicalReportUpload />
+        <MedicalReportUpload onAnalysisComplete={handleReportAnalysisComplete} />
       </View>
     </ScrollView>
     </SafeAreaView>
@@ -1896,6 +1941,12 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: '#f5a623',
     borderRadius: 10,
+  },
+  caloriesRecommendationText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#0f766e',
+    fontWeight: '600',
   },
   nutrientsGridRow: {
     flexDirection: 'row',

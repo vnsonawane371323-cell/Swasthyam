@@ -11,6 +11,7 @@ const LANGUAGE_KEY = '@swasthtel_language';
 interface AuthContextType {
   user: User | null;
   token: string | null;
+  isInitializing: boolean;
   isLoading: boolean;
   isAuthenticated: boolean;
   isOnboardingComplete: boolean;
@@ -40,7 +41,8 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Computed properties
@@ -59,7 +61,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const loadStoredAuth = async () => {
     try {
-      setIsLoading(true);
+      setIsInitializing(true);
       console.log('Loading stored auth...');
       
       const storedToken = await AsyncStorage.getItem(TOKEN_KEY);
@@ -141,7 +143,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
     } finally {
       console.log('Auth loading complete');
-      setIsLoading(false);
+      setIsInitializing(false);
     }
   };
 
@@ -336,6 +338,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value: AuthContextType = {
     user,
     token,
+    isInitializing,
     isLoading,
     isAuthenticated,
     isOnboardingComplete,

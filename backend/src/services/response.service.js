@@ -5,6 +5,27 @@ function buildResponse(ruleResult, aiResult, paramsList) {
   return null;
 }
 
+function normalizeDetailedAnalysis(details, fallback = {}) {
+  const source = details && typeof details === 'object' ? details : {};
+
+  return {
+    clinical_summary: String(source.clinical_summary || fallback.clinical_summary || '').trim(),
+    key_findings: Array.isArray(source.key_findings) && source.key_findings.length > 0
+      ? source.key_findings
+      : (Array.isArray(fallback.key_findings) ? fallback.key_findings : []),
+    critical_alerts: Array.isArray(source.critical_alerts) && source.critical_alerts.length > 0
+      ? source.critical_alerts
+      : (Array.isArray(fallback.critical_alerts) ? fallback.critical_alerts : []),
+    oil_strategy: String(source.oil_strategy || fallback.oil_strategy || '').trim(),
+    follow_up_tests: Array.isArray(source.follow_up_tests) && source.follow_up_tests.length > 0
+      ? source.follow_up_tests
+      : (Array.isArray(fallback.follow_up_tests) ? fallback.follow_up_tests : []),
+    doctor_discussion_points: Array.isArray(source.doctor_discussion_points) && source.doctor_discussion_points.length > 0
+      ? source.doctor_discussion_points
+      : (Array.isArray(fallback.doctor_discussion_points) ? fallback.doctor_discussion_points : []),
+  };
+}
+
 function buildLifestyleGuidance({ riskLevel, oilLimit, preferredOils, avoidOils, recommendations }) {
   const safeRisk = String(riskLevel || 'Moderate');
   const safeOilLimit = Number.isFinite(Number(oilLimit)) ? Number(oilLimit) : 25;
@@ -81,6 +102,20 @@ function fromAIOnly(ai) {
     ? ai.oil_impact_factors
     : buildOilImpactFromFactors(normalizedFactors);
 
+  const detailedAnalysis = normalizeDetailedAnalysis(ai.detailed_analysis, {
+    clinical_summary: ai.summary || 'Detailed report interpretation was generated from AI analysis.',
+    key_findings: (Array.isArray(ai.parameters) ? ai.parameters : [])
+      .slice(0, 5)
+      .map((param) => `${param.name}: ${param.value}${param.unit ? ` ${param.unit}` : ''} (${param.status || 'review'})`),
+    critical_alerts: aiRisks
+      .filter((risk) => String(risk?.severity || '').toLowerCase() === 'high')
+      .map((risk) => String(risk?.message || '').trim())
+      .filter(Boolean),
+    oil_strategy: String(ai.why_recommendation || 'Control portion size, improve oil quality, and avoid reheated oil.'),
+    follow_up_tests: ['Repeat relevant blood profile in 8-12 weeks based on your clinician advice.'],
+    doctor_discussion_points: ['Review abnormal markers and medication or diet adjustments required.'],
+  });
+
   return {
     health_score: healthScore,
     oil_limit: oil.daily_ml ?? 25,
@@ -104,6 +139,7 @@ function fromAIOnly(ai) {
       factors: normalizedFactors,
     },
     oil_impact_factors: normalizedOilImpact,
+    detailed_analysis: detailedAnalysis,
     lifestyle_guidance: buildLifestyleGuidance({
       riskLevel: ai.risk_level || 'Moderate',
       oilLimit: oil.daily_ml ?? 25,
@@ -122,6 +158,15 @@ function fromRuleOnly(rule, paramsList) {
   const normalizedOilImpact = (rule.oilImpactFactors && rule.oilImpactFactors.length > 0)
     ? rule.oilImpactFactors
     : buildOilImpactFromFactors(normalizedFactors);
+
+  const detailedAnalysis = normalizeDetailedAnalysis(null, {
+    clinical_summary: `${rule.riskLevel} risk profile was inferred from extracted report parameters using clinical rules.`,
+    key_findings: (paramsList || []).slice(0, 6).map((param) => `${param.name}: ${param.value}${param.unit ? ` ${param.unit}` : ''} (${param.status || 'review'})`),
+    critical_alerts: (rule.riskFlags || []).slice(0, 4),
+    oil_strategy: rule.whyRecommendation || 'Use measured oil portions and switch to unsaturated oils for daily cooking.',
+    follow_up_tests: ['Repeat the key abnormal blood parameters in 8-12 weeks as advised by your doctor.'],
+    doctor_discussion_points: ['Discuss whether current risk profile needs medication, dietary, or activity intervention.'],
+  });
 
   return {
     health_score: rule.healthScore,
@@ -146,6 +191,7 @@ function fromRuleOnly(rule, paramsList) {
       factors: normalizedFactors,
     },
     oil_impact_factors: normalizedOilImpact,
+    detailed_analysis: detailedAnalysis,
     lifestyle_guidance: buildLifestyleGuidance({
       riskLevel: rule.riskLevel,
       oilLimit: rule.oilLimit,
@@ -185,6 +231,20 @@ function merge(rule, ai, paramsList) {
       ? rule.oilImpactFactors
       : buildOilImpactFromFactors(mergedFactors));
 
+  const detailedAnalysis = normalizeDetailedAnalysis(ai.detailed_analysis, {
+    clinical_summary: ai.summary || `${rule.riskLevel} risk identified from extracted report values with AI interpretation.`,
+    key_findings: resolvedParameters
+      .slice(0, 6)
+      .map((param) => `${param.name}: ${param.value}${param.unit ? ` ${param.unit}` : ''} (${param.status || 'review'})`),
+    critical_alerts: dedupedRisks
+      .filter((risk) => String(risk?.severity || '').toLowerCase() === 'high')
+      .map((risk) => String(risk?.message || '').trim())
+      .filter(Boolean),
+    oil_strategy: ai.why_recommendation || rule.whyRecommendation || 'Keep daily oil measured and favor unsaturated oil rotation.',
+    follow_up_tests: ['Repeat key blood markers in 8-12 weeks and compare trend.'],
+    doctor_discussion_points: ['Review high-risk parameters and whether treatment plan changes are needed.'],
+  });
+
   return {
     health_score: rule.healthScore,
     oil_limit: rule.oilLimit,
@@ -214,6 +274,7 @@ function merge(rule, ai, paramsList) {
       factors: mergedFactors,
     },
     oil_impact_factors: mergedOilFactors,
+    detailed_analysis: detailedAnalysis,
     lifestyle_guidance: buildLifestyleGuidance({
       riskLevel: rule.riskLevel,
       oilLimit: rule.oilLimit,

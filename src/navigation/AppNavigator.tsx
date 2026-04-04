@@ -459,7 +459,7 @@ function MainStackNavigator({ language, onLogout }: MainStackProps) {
 // Root Navigator (Authentication Flow)
 // ============================================
 export function AppNavigator() {
-  const { isAuthenticated, isOnboardingComplete, isLoading, logout, user } = useAuth();
+  const { isAuthenticated, isOnboardingComplete, isInitializing, logout, user } = useAuth();
   const [currentScreen, setCurrentScreen] = useState<'login' | 'signup'>('login');
   const [selectedLanguage, setSelectedLanguage] = useState('en');
 
@@ -476,7 +476,7 @@ export function AppNavigator() {
   };
 
   // Loading Screen
-  if (isLoading) {
+  if (isInitializing) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1b4a5a" />
