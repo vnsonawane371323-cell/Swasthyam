@@ -651,7 +651,7 @@ exports.analyzeFoodImage = async (req, res, next) => {
       });
     }
 
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    const apiKey = process.env.OPENROUTER_OIL_SCAN_API_KEY;
     if (!apiKey) {
       return res.status(200).json({
         success: true,
