@@ -102,6 +102,50 @@ function parseJsonObject(text = '') {
   return JSON.parse(jsonText);
 }
 
+async function callOpenRouterWithFallback({ payload, title }) {
+  const keys = [
+    process.env.OPENROUTER_OIL_SCAN_API_KEY,
+    process.env.OPENROUTER_API_KEY
+  ].filter(Boolean);
+
+  if (!keys.length) {
+    return { ok: false, status: 401, text: 'No OpenRouter keys configured' };
+  }
+
+  let lastStatus = 500;
+  let lastText = 'Unknown provider error';
+
+  for (const apiKey of keys) {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://swasthtel.app',
+        'X-Title': title
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (response.ok) {
+      return { ok: true, status: response.status, json: await response.json() };
+    }
+
+    lastStatus = response.status;
+    lastText = await response.text();
+
+    // If key is invalid/unknown, try next available key.
+    if (response.status === 401 || response.status === 403) {
+      continue;
+    }
+
+    // For non-auth failures, fail fast.
+    return { ok: false, status: response.status, text: lastText };
+  }
+
+  return { ok: false, status: lastStatus, text: lastText };
+}
+
 function normalizeActivityLevel(activityLevel = '') {
   const raw = String(activityLevel || '').trim().toLowerCase().replace(/_/g, '-');
   const aliases = {
@@ -703,8 +747,7 @@ exports.analyzeFoodImage = async (req, res, next) => {
       });
     }
 
-    const apiKey = process.env.OPENROUTER_OIL_SCAN_API_KEY;
-    if (!apiKey) {
+    if (!process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
       return res.status(200).json({
         success: true,
         data: getFoodAnalyzerFallback(),
@@ -735,15 +778,9 @@ Analyze this food image and return ONLY a valid JSON object with this shape:
   "isHealthy": boolean
 }`;
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://swasthtel.app',
-        'X-Title': 'SwasthTel Food Oil Analyzer'
-      },
-      body: JSON.stringify({
+    const providerResult = await callOpenRouterWithFallback({
+      title: 'SwasthTel Food Oil Analyzer',
+      payload: {
         model: 'google/gemini-2.0-flash-001',
         messages: [
           {
@@ -761,21 +798,20 @@ Analyze this food image and return ONLY a valid JSON object with this shape:
         ],
         max_tokens: 1024,
         temperature: 0.3
-      })
+      }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[FoodAnalyzer] OpenRouter error:', response.status, errorText.slice(0, 300));
+    if (!providerResult.ok) {
+      console.error('[FoodAnalyzer] OpenRouter error:', providerResult.status, String(providerResult.text || '').slice(0, 300));
 
       return res.status(200).json({
         success: true,
         data: getFoodAnalyzerFallback(),
-        message: `AI provider error (${response.status}). Returned estimated fallback analysis.`
+        message: `AI provider error (${providerResult.status}). Returned estimated fallback analysis.`
       });
     }
 
-    const data = await response.json();
+    const data = providerResult.json;
     const generatedText = data?.choices?.[0]?.message?.content;
 
     if (!generatedText) {
@@ -815,8 +851,7 @@ exports.analyzeBarcodeImage = async (req, res, next) => {
       });
     }
 
-    const apiKey = process.env.OPENROUTER_OIL_SCAN_API_KEY;
-    if (!apiKey) {
+    if (!process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
       return res.status(200).json({
         success: true,
         data: getBarcodeAnalyzerFallback(),
@@ -870,15 +905,9 @@ Swasth Index rules:
 - 0-30: poor, 31-55: moderate, 56-75: good, 76-100: excellent.
 - Always include at least 2 items in better_options with clear practical reasons.`;
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://swasthtel.app',
-        'X-Title': 'SwasthTel Barcode Scanner'
-      },
-      body: JSON.stringify({
+    const providerResult = await callOpenRouterWithFallback({
+      title: 'SwasthTel Barcode Scanner',
+      payload: {
         model: 'google/gemini-2.0-flash-001',
         messages: [
           {
@@ -896,21 +925,20 @@ Swasth Index rules:
         ],
         max_tokens: 1024,
         temperature: 0.3
-      })
+      }
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[BarcodeAnalyzer] OpenRouter error:', response.status, errorText.slice(0, 300));
+    if (!providerResult.ok) {
+      console.error('[BarcodeAnalyzer] OpenRouter error:', providerResult.status, String(providerResult.text || '').slice(0, 300));
 
       return res.status(200).json({
         success: true,
         data: getBarcodeAnalyzerFallback(),
-        message: `AI provider error (${response.status}). Returned estimated fallback analysis.`
+        message: `AI provider error (${providerResult.status}). Returned estimated fallback analysis.`
       });
     }
 
-    const data = await response.json();
+    const data = providerResult.json;
     const generatedText = data?.choices?.[0]?.message?.content;
 
     if (!generatedText) {
