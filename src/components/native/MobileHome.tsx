@@ -274,11 +274,10 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
         const oilTotal = Number(todayResponse.data.dailyOilCalories);
         const fallbackOil = Number(todayResponse.data.dailyTotal) * 9;
 
-        const resolvedTotalConsumed = Number.isFinite(backendTotal) && backendTotal >= 0
+        // Total calories should only use backend total, not fall back to oil
+        const resolvedTotalConsumed = (Number.isFinite(backendTotal) && backendTotal >= 0)
           ? backendTotal
-          : (Number.isFinite(oilTotal) && oilTotal >= 0
-            ? oilTotal
-            : (Number.isFinite(fallbackOil) && fallbackOil >= 0 ? fallbackOil : 0));
+          : 0;
 
         const resolvedOilConsumed = Number.isFinite(oilTotal) && oilTotal >= 0
           ? oilTotal
