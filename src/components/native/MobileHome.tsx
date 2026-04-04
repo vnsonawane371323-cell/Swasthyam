@@ -141,14 +141,8 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   const dailyConsumedCal = Math.round(dailyConsumption * 9);
   const resolvedOilConsumedCal = dailyConsumedCal > 0 ? dailyConsumedCal : Math.max(0, Math.round(selectedDayCalories));
   
-  // NEW FORMULA FOR TOTAL CALORIES
-  // Calculate consumed calories from entries
-  const entries = Array.isArray(weeklyData) ? weeklyData : [];
-  const selectedDayEntry = entries.find(
-    (item: any) => item.date === new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short' })
-  );
-  let consumedCaloriesFromEntries = selectedDayEntry?.calories || consumedCalories || 0;
-  const resolvedTotalConsumedCal = Math.max(0, Math.round(consumedCaloriesFromEntries));
+  // Total calories should come from selected-day API totals, not weekly oil chart data
+  const resolvedTotalConsumedCal = Math.max(0, Math.round(consumedCalories || 0));
   
   // IMPORTANT: Total calories must always be >= Oil calories
   // If total < oil, set total = oil (oil is a subset of total)
@@ -185,18 +179,31 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   const weeklyMaxCalories = weeklyData.reduce((max, point) => Math.max(max, point.calories), 0);
   const chartMaxCal = Math.max(effectiveDailyLimitCal * 1.2, weeklyMaxCalories * 1.1, 1);
 
-  // Calculate consumption percentage and determine mascot state
-  // Check if selected day exceeded limit
-  const isOverLimit = selectedDayCalories > effectiveDailyLimitCal;
-  const mascotImage = isOverLimit 
-    ? require('../../assets/Angry.png')
-    : require('../../assets/mascot_home.png');
-  
-  const speechText = isOverLimit
-    ? `Oh no! You consumed ${Math.round(selectedDayCalories)}cal on this day. That's over your ${effectiveDailyLimitCal}cal limit!`
-    : selectedDayCalories > 0 
-      ? `Great job! You stayed within your limit on this day with ${Math.round(selectedDayCalories)}cal`
-      : "Select a day to see your oil consumption";
+  // Mood-based mascot progression as oil calories increase
+  const oilUsagePercent = oilFillPercent;
+  const mascotImage =
+    oilUsagePercent <= 25
+      ? require('../../assets/happy schef.png')
+      : oilUsagePercent <= 50
+        ? require('../../assets/happy doctor.png')
+        : oilUsagePercent <= 75
+          ? require('../../assets/annoyed.png')
+          : oilUsagePercent <= 100
+            ? require('../../assets/Tears in eyes.png')
+            : require('../../assets/Angry.png');
+
+  const speechText =
+    finalOilConsumedCal <= 0
+      ? 'Select a day to see your oil consumption'
+      : oilUsagePercent <= 25
+        ? `Excellent! Oil intake is very low at ${Math.round(finalOilConsumedCal)} cal.`
+        : oilUsagePercent <= 50
+          ? `Good control! You've used ${Math.round(finalOilConsumedCal)} oil calories today.`
+          : oilUsagePercent <= 75
+            ? `Careful now. Oil intake is rising: ${Math.round(finalOilConsumedCal)} cal.`
+            : oilUsagePercent <= 100
+              ? `You are near your oil limit with ${Math.round(finalOilConsumedCal)} cal.`
+              : `Too much oil today: ${Math.round(finalOilConsumedCal)} cal. Try lighter meals next.`;
 
   const fetchWeeklyData = useCallback(async () => {
     if (weekDates.length < 7) return;
@@ -235,14 +242,17 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
         const key = getDateKey(entryDate);
         if (!totalsByDate.has(key)) return;
 
-        // Weekly graph tracks oil calories only
+        // Weekly graph tracks oil calories only (prefer stored oilCalories when available)
+        const oilCalories = Number((entry as any).oilCalories);
         const rawCalories = Number(entry.rawKcal);
         const fallbackCalories = Number(entry.oilAmount) * 9;
-        const resolvedCalories = Number.isFinite(rawCalories) && rawCalories >= 0
-          ? rawCalories
-          : (Number.isFinite(fallbackCalories) && fallbackCalories >= 0
-            ? fallbackCalories
-            : 0);
+        const resolvedCalories = Number.isFinite(oilCalories) && oilCalories >= 0
+          ? oilCalories
+          : (Number.isFinite(rawCalories) && rawCalories >= 0
+            ? rawCalories
+            : (Number.isFinite(fallbackCalories) && fallbackCalories >= 0
+              ? fallbackCalories
+              : 0));
 
         totalsByDate.set(key, (totalsByDate.get(key) || 0) + resolvedCalories);
       });
@@ -261,10 +271,11 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
 
   const fetchCalorieTargets = useCallback(async () => {
     try {
+      const selectedDateKey = getDateKey(selectedDate);
       const [meResult, todayResult, statusResult] = await Promise.allSettled([
         apiService.getMe(),
-        apiService.getTodayOilConsumption(),
-        apiService.getUserOilStatus(),
+        apiService.getTodayOilConsumption(selectedDateKey),
+        apiService.getUserOilStatus(selectedDateKey),
       ]);
 
       const meResponse = meResult.status === 'fulfilled' ? meResult.value : null;
@@ -322,7 +333,7 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
     } catch (error) {
       console.log('Failed to fetch calorie targets:', error);
     }
-  }, []);
+  }, [selectedDate]);
 
   const fetch30DayProgress = useCallback(async () => {
     // Keep placeholder values for now; this section can be wired to a dedicated endpoint later.
