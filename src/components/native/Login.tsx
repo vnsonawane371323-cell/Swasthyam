@@ -346,9 +346,13 @@ export function Login({ onComplete, onSignup, language, onLanguageChange }: Logi
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.socialButton, socialLoading === 'google' && styles.socialButtonLoading]}
+              style={[
+                styles.socialButton,
+                socialLoading === 'google' && styles.socialButtonLoading,
+                !googleReady && styles.socialButtonDisabled
+              ]}
               onPress={() => handleSocialLogin('google')}
-              disabled={!!socialLoading}
+              disabled={!!socialLoading || !googleReady}
             >
               {socialLoading === 'google' ? (
                 <ActivityIndicator color="#EA4335" size="small" />
@@ -371,6 +375,12 @@ export function Login({ onComplete, onSignup, language, onLanguageChange }: Logi
               </TouchableOpacity>
             )}
           </View>
+
+          {!googleReady && (
+            <Text style={styles.socialSetupHint}>
+              Google Sign-In needs OAuth client IDs in project .env.
+            </Text>
+          )}
 
           {/* Sign Up Link */}
           <View style={styles.signupContainer}>
@@ -628,6 +638,16 @@ const styles = StyleSheet.create({
   },
   socialButtonLoading: {
     opacity: 0.7,
+  },
+  socialButtonDisabled: {
+    opacity: 0.4,
+  },
+  socialSetupHint: {
+    textAlign: 'center',
+    color: '#5B5B5B',
+    fontSize: 12,
+    marginTop: -12,
+    marginBottom: 20,
   },
   signupContainer: {
     flexDirection: 'row',

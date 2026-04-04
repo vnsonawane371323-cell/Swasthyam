@@ -2,6 +2,7 @@
   "expo": {
     "name": "SwasthTel",
     "slug": "swasthtel-app",
+    "owner": "Swasthyam-1111",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -38,6 +39,11 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
+      "googleExpoClientId": "146026611863-3esg5l9cq4bhb2gs8lg0k59pjfeh44de.apps.googleusercontent.com",
+      "googleWebClientId": "146026611863-3esg5l9cq4bhb2gs8lg0k59pjfeh44de.apps.googleusercontent.com",
+      "googleAndroidClientId": "146026611863-oo8qkplc96a3fma96v029qnrioais177.apps.googleusercontent.com",
+      "googleRedirectUri": "https://auth.expo.io/@Swasthyam-1111/swasthtel-app",
+      "googleProjectNameForProxy": "@Swasthyam-1111/swasthtel-app",
       "eas": {
         "projectId": "705dcefc-4c18-4ae6-8f60-669adec47c52"
       }
