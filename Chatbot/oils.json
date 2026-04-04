@@ -1,0 +1,227 @@
+[
+  {
+    "name": "Mustard Oil",
+    "smoke_point": "250°C",
+    "best_for": ["deep frying", "Indian cooking"],
+    "health": "Rich in monounsaturated fats",
+    "risks": "Excess may affect heart health",
+    "tips": "Use in moderation",
+    "swasth_index": 82
+  },
+  {
+    "name": "Sunflower Oil",
+    "smoke_point": "232°C",
+    "best_for": ["frying", "sauteing"],
+    "health": "Light but high omega-6",
+    "risks": "Too much may cause inflammation",
+    "tips": "Avoid repeated heating",
+    "swasth_index": 65
+  },
+  {
+    "name": "Olive Oil (Extra Virgin)",
+    "smoke_point": "190°C",
+    "best_for": ["salads", "light cooking"],
+    "health": "Very heart-friendly fats",
+    "risks": "Not for deep frying",
+    "tips": "Use raw or low heat",
+    "swasth_index": 92
+  },
+  {
+    "name": "Groundnut Oil",
+    "smoke_point": "225°C",
+    "best_for": ["frying", "Indian cooking"],
+    "health": "Balanced fats",
+    "risks": "High calories",
+    "tips": "Control quantity",
+    "swasth_index": 75
+  },
+  {
+    "name": "Coconut Oil",
+    "smoke_point": "177°C",
+    "best_for": ["light cooking"],
+    "health": "Contains MCT fats",
+    "risks": "High saturated fat",
+    "tips": "Use occasionally",
+    "swasth_index": 60
+  },
+  {
+    "name": "Ghee",
+    "smoke_point": "250°C",
+    "best_for": ["tadka", "Indian cooking"],
+    "health": "Good in small amounts",
+    "risks": "High saturated fat",
+    "tips": "1-2 tsp only",
+    "swasth_index": 70
+  },
+  {
+    "name": "Palm Oil",
+    "smoke_point": "235°C",
+    "best_for": ["processed foods"],
+    "health": "Stable oil",
+    "risks": "High saturated fat",
+    "tips": "Avoid frequent use",
+    "swasth_index": 30
+  },
+  {
+    "name": "Rice Bran Oil",
+    "smoke_point": "232°C",
+    "best_for": ["daily cooking"],
+    "health": "Helps cholesterol balance",
+    "risks": "Still calorie dense",
+    "tips": "Good daily option",
+    "swasth_index": 85
+  },
+  {
+    "name": "Soybean Oil",
+    "smoke_point": "230°C",
+    "best_for": ["frying"],
+    "health": "Contains omega-3",
+    "risks": "Highly processed",
+    "tips": "Limit use",
+    "swasth_index": 55
+  },
+  {
+    "name": "Canola Oil",
+    "smoke_point": "204°C",
+    "best_for": ["light cooking"],
+    "health": "Low saturated fat",
+    "risks": "Highly refined",
+    "tips": "Use occasionally",
+    "swasth_index": 68
+  },
+  {
+    "name": "Sesame Oil",
+    "smoke_point": "210°C",
+    "best_for": ["flavoring"],
+    "health": "Rich antioxidants",
+    "risks": "Strong flavor",
+    "tips": "Use in small amounts",
+    "swasth_index": 80
+  },
+  {
+    "name": "Avocado Oil",
+    "smoke_point": "270°C",
+    "best_for": ["high heat cooking"],
+    "health": "Excellent healthy fats",
+    "risks": "Expensive",
+    "tips": "Great but rare",
+    "swasth_index": 95
+  },
+  {
+    "name": "Butter",
+    "smoke_point": "150°C",
+    "best_for": ["flavor"],
+    "health": "Contains vitamins",
+    "risks": "High saturated fat",
+    "tips": "Use rarely",
+    "swasth_index": 50
+  },
+  {
+    "name": "Corn Oil",
+    "smoke_point": "232°C",
+    "best_for": ["frying"],
+    "health": "Light texture",
+    "risks": "High omega-6",
+    "tips": "Limit frequent use",
+    "swasth_index": 52
+  },
+  {
+    "name": "Safflower Oil",
+    "smoke_point": "232°C",
+    "best_for": ["frying"],
+    "health": "Low saturated fat",
+    "risks": "Highly processed",
+    "tips": "Use occasionally",
+    "swasth_index": 60
+  },
+  {
+    "name": "Flaxseed Oil",
+    "smoke_point": "107°C",
+    "best_for": ["salads"],
+    "health": "Very high omega-3",
+    "risks": "Not for heating",
+    "tips": "Use raw only",
+    "swasth_index": 90
+  },
+  {
+    "name": "Walnut Oil",
+    "smoke_point": "160°C",
+    "best_for": ["salads"],
+    "health": "Good fats",
+    "risks": "Low heat tolerance",
+    "tips": "Do not overheat",
+    "swasth_index": 85
+  },
+  {
+    "name": "Almond Oil",
+    "smoke_point": "216°C",
+    "best_for": ["light cooking"],
+    "health": "Healthy fats",
+    "risks": "Expensive",
+    "tips": "Use occasionally",
+    "swasth_index": 82
+  },
+  {
+    "name": "Hazelnut Oil",
+    "smoke_point": "221°C",
+    "best_for": ["light cooking"],
+    "health": "Nutrient-rich",
+    "risks": "Costly",
+    "tips": "Use for flavor",
+    "swasth_index": 84
+  },
+  {
+    "name": "Macadamia Oil",
+    "smoke_point": "210°C",
+    "best_for": ["cooking"],
+    "health": "Excellent fats",
+    "risks": "Expensive",
+    "tips": "Premium option",
+    "swasth_index": 93
+  },
+  {
+    "name": "Cottonseed Oil",
+    "smoke_point": "216°C",
+    "best_for": ["processed foods"],
+    "health": "Neutral taste",
+    "risks": "Highly refined",
+    "tips": "Avoid regular use",
+    "swasth_index": 40
+  },
+  {
+    "name": "Vegetable Oil (Mixed)",
+    "smoke_point": "220°C",
+    "best_for": ["general cooking"],
+    "health": "Varies",
+    "risks": "Often refined blend",
+    "tips": "Check label",
+    "swasth_index": 50
+  },
+  {
+    "name": "Vanaspati",
+    "smoke_point": "240°C",
+    "best_for": ["commercial cooking"],
+    "health": "Cheap substitute",
+    "risks": "Contains trans fats",
+    "tips": "Avoid completely",
+    "swasth_index": 5
+  },
+  {
+    "name": "Palm Kernel Oil",
+    "smoke_point": "230°C",
+    "best_for": ["processed foods"],
+    "health": "Stable oil",
+    "risks": "Very high saturated fat",
+    "tips": "Avoid frequent use",
+    "swasth_index": 15
+  },
+  {
+    "name": "Mustard Blend Oil",
+    "smoke_point": "240°C",
+    "best_for": ["daily cooking"],
+    "health": "Balanced composition",
+    "risks": "Depends on blend",
+    "tips": "Check composition",
+    "swasth_index": 78
+  }
+]

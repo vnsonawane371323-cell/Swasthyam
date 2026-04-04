@@ -13,10 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-
-// OpenRouter API Configuration
-const OPENROUTER_API_KEY = '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';
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+import { sendMessage } from '../../services/chatService';
 
 interface SuperNaniChatProps {
   onClose: () => void;
@@ -62,37 +59,11 @@ export function SuperNaniChat({ onClose }: SuperNaniChatProps) {
   }, []);
 
   const callAPI = useCallback(async (userMessage: string): Promise<string> => {
-    const systemPrompt = `You are Super Nani, a warm, caring AI grandmother who is an expert in healthy cooking and oil management. 
-Keep responses concise (2-3 paragraphs max). Use bullet points for tips. Add emojis sparingly.
-ONLY discuss: oil, cooking, food, recipes, nutrition, healthy eating.`;
-
     try {
-      const response = await fetch(OPENROUTER_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.0-flash-001',
-          messages: [
-            { role: 'user', content: systemPrompt },
-            { role: 'assistant', content: "Namaste beta! I'm Super Nani, ready to help with cooking and oil tips! 🙏" },
-            { role: 'user', content: userMessage },
-          ],
-          max_tokens: 400,
-          temperature: 0.7,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      return data.choices?.[0]?.message?.content || "Sorry beta, I couldn't understand. Please try again! 🙏";
+      const response = await sendMessage(userMessage);
+      return response || "Sorry beta, I couldn't understand. Please try again! 🙏";
     } catch (error) {
-      console.error('API Error:', error);
+      console.error('Chat API Error:', error);
       return "I'm having trouble right now, beta. Please try again in a moment. 🙏";
     }
   }, []);
