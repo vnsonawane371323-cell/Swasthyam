@@ -136,6 +136,15 @@ export function NotificationsScreen({ navigation }: NotificationsScreenProps) {
     setNotifications(defaultNotifications);
   };
 
+  const handleSendTestNotification = async () => {
+    await notificationService.createNotification(
+      'ai-tip',
+      'AI Cooking Tip (Test)',
+      'Try steaming or grilling instead of deep frying to cut oil usage by up to 40%.'
+    );
+    await loadNotifications();
+  };
+
   const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
@@ -212,6 +221,14 @@ export function NotificationsScreen({ navigation }: NotificationsScreenProps) {
 
         {/* Mark All as Read & Clear */}
         <View style={styles.footer}>
+          <TouchableOpacity
+            style={[styles.markReadButton, styles.testButton]}
+            activeOpacity={0.7}
+            onPress={handleSendTestNotification}
+          >
+            <Ionicons name="notifications-outline" size={18} color="#ffffff" style={{ marginRight: 6 }} />
+            <Text style={[styles.markReadText, styles.testButtonText]}>Send Test Notification</Text>
+          </TouchableOpacity>
           <TouchableOpacity 
             style={styles.markReadButton} 
             activeOpacity={0.7}
@@ -343,6 +360,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#15803d',
+  },
+  testButton: {
+    backgroundColor: '#1b4a5a',
+  },
+  testButtonText: {
+    color: '#ffffff',
   },
   clearButton: {
     backgroundColor: '#f3f4f6',

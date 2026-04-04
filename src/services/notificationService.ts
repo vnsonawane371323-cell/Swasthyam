@@ -1,5 +1,6 @@
 import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 
 // Notification types
 export type NotificationType = 
@@ -70,6 +71,66 @@ const NOTIFICATIONS_STORAGE_KEY = '@swasthtel_notifications';
 
 class NotificationService {
   private notificationCallbacks: Array<(notification: AppNotification) => void> = [];
+
+  async initializeLocalNotifications(): Promise<void> {
+    try {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: false,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'Default',
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#1b4a5a',
+          sound: 'default',
+        });
+      }
+
+      const settings = await Notifications.getPermissionsAsync();
+      if (settings.status !== 'granted') {
+        await Notifications.requestPermissionsAsync();
+      }
+    } catch (error) {
+      console.error('[NotificationService] Failed to initialize local notifications:', error);
+    }
+  }
+
+  private async sendLocalNotification(notification: AppNotification): Promise<void> {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: notification.title,
+          body: notification.message,
+          sound: true,
+          data: notification.data || {},
+        },
+        trigger: null,
+      });
+    } catch (error) {
+      console.error('[NotificationService] Failed to send local notification:', error);
+    }
+  }
+
+  private isSameDay(isoTimeA: string, isoTimeB: string): boolean {
+    const a = new Date(isoTimeA);
+    const b = new Date(isoTimeB);
+
+    if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return false;
+
+    return (
+      a.getFullYear() === b.getFullYear() &&
+      a.getMonth() === b.getMonth() &&
+      a.getDate() === b.getDate()
+    );
+  }
 
   // Subscribe to notifications
   subscribe(callback: (notification: AppNotification) => void) {
@@ -155,10 +216,24 @@ class NotificationService {
     goalAmount: number,
     showAlert: boolean = true
   ): Promise<{ exceeded: boolean; notification?: AppNotification }> {
+    if (!Number.isFinite(currentAmount) || !Number.isFinite(goalAmount) || goalAmount <= 0) {
+      return { exceeded: false };
+    }
+
+    const existingNotifications = await this.getStoredNotifications();
+    const nowIso = this.getTimestamp();
     const exceeded = currentAmount > goalAmount;
     const percentOver = Math.round(((currentAmount - goalAmount) / goalAmount) * 100);
 
     if (exceeded) {
+      const alreadySentToday = existingNotifications.some(
+        n => n.type === 'oil-exceeded' && this.isSameDay(n.time, nowIso)
+      );
+
+      if (alreadySentToday) {
+        return { exceeded: true };
+      }
+
       // Get a random learning module suggestion
       const modules = LEARNING_MODULES.oilExceeded;
       const suggestedModule = modules[Math.floor(Math.random() * modules.length)];
@@ -184,6 +259,9 @@ class NotificationService {
       // Notify subscribers
       this.notifySubscribers(notification);
 
+      // Show native OS notification banner/list entry
+      await this.sendLocalNotification(notification);
+
       // Show alert if requested
       if (showAlert) {
         this.showOilExceededAlert(currentAmount, goalAmount, suggestedModule);
@@ -195,6 +273,14 @@ class NotificationService {
     // Check for warning (80% of goal)
     const warningThreshold = goalAmount * 0.8;
     if (currentAmount >= warningThreshold && currentAmount <= goalAmount) {
+      const warningAlreadySentToday = existingNotifications.some(
+        n => n.type === 'oil-warning' && this.isSameDay(n.time, nowIso)
+      );
+
+      if (warningAlreadySentToday) {
+        return { exceeded: false };
+      }
+
       const percentUsed = Math.round((currentAmount / goalAmount) * 100);
       
       const notification: AppNotification = {
@@ -212,6 +298,7 @@ class NotificationService {
 
       await this.storeNotification(notification);
       this.notifySubscribers(notification);
+      await this.sendLocalNotification(notification);
     }
 
     return { exceeded: false };
@@ -264,6 +351,7 @@ class NotificationService {
 
     await this.storeNotification(notification);
     this.notifySubscribers(notification);
+    await this.sendLocalNotification(notification);
 
     return notification;
   }

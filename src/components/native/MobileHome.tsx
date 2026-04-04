@@ -22,6 +22,7 @@ import { MedicalReportUpload } from './MedicalReportUpload';
 import Svg, { Path, Circle, Line, Text as SvgText, G, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import apiService from '../../services/api';
+import { notificationService } from '../../services/notificationService';
 import { t } from '../../i18n';
 
 interface MobileHomeProps {
@@ -98,11 +99,20 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   }, [weekOffset]);
 
   useEffect(() => {
-    // When changing week, default select the first day of that week
+    // For current week, default to today; for other weeks, default to first day.
     if (weekDates.length > 0) {
-      setSelectedDate(weekDates[0].fullDate);
+      const today = new Date();
+      const todayInWeek = weekDates.find(
+        (item) => item.fullDate.toDateString() === today.toDateString()
+      );
+
+      if (weekOffset === 0 && todayInWeek) {
+        setSelectedDate(todayInWeek.fullDate);
+      } else {
+        setSelectedDate(weekDates[0].fullDate);
+      }
     }
-  }, [weekDates]);
+  }, [weekDates, weekOffset]);
 
   const [dailyConsumption, setDailyConsumption] = useState(0); // ml
   const [dailyLimit, setDailyLimit] = useState(0); // ml - will be fetched from API
@@ -126,10 +136,8 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   const [currentAvg, setCurrentAvg] = useState(0);
 
   const getDateKey = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    // Keep date key format consistent with Oil Tracker API usage.
+    return date.toISOString().split('T')[0];
   };
 
   const effectiveDailyLimitCal =
@@ -329,6 +337,14 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
 
         // Oil bar should reflect oil calories only
         setDailyConsumption(Math.max(0, oilTotal) / 9);
+
+        // Trigger notification creation for over-limit state even when data was pre-seeded.
+        // Restrict to today's date to avoid notifications while browsing historical days.
+        const todayKey = getDateKey(new Date());
+        const hasValidGoal = Number.isFinite(statusGoalKcal) && statusGoalKcal > 0;
+        if (selectedDateKey === todayKey && hasValidGoal) {
+          await notificationService.checkAndNotifyOilExcess(oilTotal, statusGoalKcal);
+        }
       }
     } catch (error) {
       console.log('Failed to fetch calorie targets:', error);
@@ -661,7 +677,10 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
           <TouchableOpacity style={styles.actionButton}>
             <Ionicons name="search" size={22} color="#1b4a5a" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('Notifications')}
+          >
             <Ionicons name="notifications" size={22} color="#1b4a5a" />
             {hasNotification && <View style={styles.notificationBadge} />}
           </TouchableOpacity>

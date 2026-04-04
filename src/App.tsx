@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { AppNavigator } from './navigation/AppNavigator';
+import { notificationService } from './services/notificationService';
 
 function AppContent() {
   const { isDark } = useTheme();
+
+  useEffect(() => {
+    notificationService.initializeLocalNotifications();
+  }, []);
   
   return (
     <>
