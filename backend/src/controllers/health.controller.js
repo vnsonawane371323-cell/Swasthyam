@@ -32,14 +32,16 @@ async function analyzeReport(req, res, next) {
     if (hasEnoughText) {
       const params = extractParameters(ocrText);
       paramsList = paramsToList(params);
-      ruleResult = analyzeRisk(params);
+      if (paramsList.length > 0) {
+        ruleResult = analyzeRisk(params);
+      }
     }
 
     let aiResult = null;
 
     if ((!hasEnoughText || ocrFailed) && mimetype.startsWith('image/')) {
       aiResult = await analyzeWithVision(buffer, mimetype, ruleResult);
-    } else if (ruleResult) {
+    } else if (hasEnoughText) {
       aiResult = await enrichWithAI(ocrText, ruleResult, paramsList);
     }
 
