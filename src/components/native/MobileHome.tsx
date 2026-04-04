@@ -149,6 +149,12 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
     totalCalories > 0
       ? Math.min((resolvedTotalConsumedCal / totalCalories) * 100, 100)
       : 0;
+
+  console.log('📊 [MobileHome] Fill Percent Calculation:');
+  console.log('  - totalCalories (goal):', totalCalories);
+  console.log('  - consumedCalories (state):', consumedCalories);
+  console.log('  - resolvedTotalConsumedCal:', resolvedTotalConsumedCal);
+  console.log('  - totalCaloriesFillPercent:', totalCaloriesFillPercent, '%');
   const weeklyMaxCalories = weeklyData.reduce((max, point) => Math.max(max, point.calories), 0);
   const chartMaxCal = Math.max(effectiveDailyLimitCal * 1.2, weeklyMaxCalories * 1.1, 1);
 
@@ -270,10 +276,18 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
       }
 
       if (todayResponse?.success && todayResponse.data) {
-        const totalCalories = Number(todayResponse.data.dailyTotalCalories) || 0;
+        const consumedTotalCalories = Number(todayResponse.data.dailyTotalCalories) || 0;
         const oilTotal = Number(todayResponse.data.dailyOilCalories) || 0;
 
-        setConsumedCalories(Math.round(totalCalories));
+        console.log('📊 [MobileHome] API Response:');
+        console.log('  - dailyTotalCalories (consumed):', todayResponse.data.dailyTotalCalories);
+        console.log('  - dailyOilCalories:', todayResponse.data.dailyOilCalories);
+        console.log('  - entries count:', todayResponse.data.entries?.length || 0);
+
+        setConsumedCalories(Math.round(consumedTotalCalories));
+
+        console.log('📊 [MobileHome] After state update:');
+        console.log('  - consumedCalories set to:', Math.round(consumedTotalCalories));
 
         // Oil bar should reflect oil calories only
         setDailyConsumption(Math.max(0, oilTotal) / 9);
