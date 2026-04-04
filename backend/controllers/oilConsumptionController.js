@@ -102,6 +102,70 @@ function parseJsonObject(text = '') {
   return JSON.parse(jsonText);
 }
 
+function clamp01(value, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+  if (numeric < 0) {
+    return 0;
+  }
+  if (numeric > 1) {
+    return 1;
+  }
+  return numeric;
+}
+
+function roundToThree(value) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function normalizeCookingMethod(raw = {}) {
+  const deep = clamp01(raw.deep_fry, 0.7);
+  const shallow = clamp01(raw.shallow_fry, 0.15);
+  const air = clamp01(raw.air_fry, 0.1);
+  const baked = clamp01(raw.baked, 0.05);
+
+  const total = deep + shallow + air + baked;
+
+  if (!total) {
+    return {
+      deep_fry: 0.7,
+      shallow_fry: 0.15,
+      air_fry: 0.1,
+      baked: 0.05
+    };
+  }
+
+  const normalized = {
+    deep_fry: roundToThree(deep / total),
+    shallow_fry: roundToThree(shallow / total),
+    air_fry: roundToThree(air / total)
+  };
+
+  const bakedValue = roundToThree(1 - (normalized.deep_fry + normalized.shallow_fry + normalized.air_fry));
+
+  return {
+    ...normalized,
+    baked: bakedValue < 0 ? 0 : bakedValue
+  };
+}
+
+function normalizeFoodVisionOutput(parsed = {}) {
+  const food = typeof parsed.food === 'string' && parsed.food.trim()
+    ? parsed.food.trim()
+    : 'unknown';
+
+  const cooking_method = normalizeCookingMethod(parsed.cooking_method || {});
+  const confidence = clamp01(parsed.confidence, 0.65);
+
+  return {
+    food,
+    cooking_method,
+    confidence: roundToThree(confidence)
+  };
+}
+
 async function callOpenRouterWithFallback({ payload, title }) {
   const keys = [
     process.env.OPENROUTER_OIL_SCAN_API_KEY,
@@ -144,6 +208,154 @@ async function callOpenRouterWithFallback({ payload, title }) {
   }
 
   return { ok: false, status: lastStatus, text: lastText };
+}
+
+function getGeminiApiKeys() {
+  return [process.env.GEMINI_API_KEY, process.env.GOOGLE_API_KEY].filter(Boolean);
+}
+
+function buildGeminiContentsFromOpenRouterMessages(messages = []) {
+  const userMessage = messages.find((message) => message?.role === 'user');
+  const content = Array.isArray(userMessage?.content) ? userMessage.content : [];
+  const parts = [];
+
+  for (const item of content) {
+    if (item?.type === 'text' && typeof item?.text === 'string' && item.text.trim()) {
+      parts.push({ text: item.text });
+      continue;
+    }
+
+    if (item?.type === 'image_url' && typeof item?.image_url?.url === 'string') {
+      const url = item.image_url.url;
+      const match = url.match(/^data:(image\/[a-zA-Z0-9+.-]+);base64,(.+)$/);
+      if (match) {
+        parts.push({
+          inlineData: {
+            mimeType: match[1],
+            data: match[2]
+          }
+        });
+      }
+    }
+  }
+
+  return [{ role: 'user', parts }];
+}
+
+function getGeminiModelFromPayload(payload = {}) {
+  const raw = String(payload?.model || '').trim();
+  if (!raw) {
+    return process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  }
+
+  if (raw.includes('/')) {
+    return raw.split('/').pop() || (process.env.GEMINI_MODEL || 'gemini-2.0-flash');
+  }
+
+  return raw;
+}
+
+async function callGeminiWithFallback({ payload }) {
+  const keys = getGeminiApiKeys();
+  if (!keys.length) {
+    return { ok: false, status: 401, text: 'No Gemini keys configured' };
+  }
+
+  const contents = buildGeminiContentsFromOpenRouterMessages(payload?.messages || []);
+  const model = getGeminiModelFromPayload(payload);
+
+  let lastStatus = 500;
+  let lastText = 'Unknown Gemini error';
+
+  for (const key of keys) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents,
+        generationConfig: {
+          temperature: Number(payload?.temperature ?? 0.3),
+          maxOutputTokens: Number(payload?.max_tokens ?? 1024)
+        }
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts
+        ?.map((part) => part?.text)
+        .filter(Boolean)
+        .join('\n') || '';
+
+      if (text) {
+        return {
+          ok: true,
+          status: response.status,
+          json: {
+            choices: [
+              {
+                message: {
+                  content: text
+                }
+              }
+            ]
+          }
+        };
+      }
+
+      return { ok: false, status: 502, text: 'Empty Gemini response text' };
+    }
+
+    lastStatus = response.status;
+    lastText = await response.text();
+
+    if (response.status === 401 || response.status === 403) {
+      continue;
+    }
+
+    return { ok: false, status: response.status, text: lastText };
+  }
+
+  return { ok: false, status: lastStatus, text: lastText };
+}
+
+function hasOpenRouterKeys() {
+  return Boolean(process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_OIL_SCAN_API_KEY);
+}
+
+function extractProviderMessage(rawText = '') {
+  const text = String(rawText || '').trim();
+  if (!text) {
+    return 'Services are down';
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    const message = parsed?.error?.message || parsed?.message;
+    if (message) {
+      return String(message);
+    }
+  } catch (error) {
+    // Ignore JSON parse failures and fall back to raw text.
+  }
+
+  return text.slice(0, 220);
+}
+
+async function callVisionProviderWithFallback({ payload, title }) {
+  const geminiResult = await callGeminiWithFallback({ payload });
+  if (geminiResult.ok) {
+    return geminiResult;
+  }
+
+  if (!hasOpenRouterKeys()) {
+    return geminiResult;
+  }
+
+  return callOpenRouterWithFallback({ payload, title });
 }
 
 function normalizeActivityLevel(activityLevel = '') {
@@ -735,7 +947,7 @@ exports.getUserOilStatus = async (req, res, next) => {
   }
 };
 
-// Analyze food image and return oil-focused nutrition estimate.
+// Analyze food image and return perception-only cooking insights.
 exports.analyzeFoodImage = async (req, res, next) => {
   try {
     const { base64Image } = req.body;
@@ -747,37 +959,93 @@ exports.analyzeFoodImage = async (req, res, next) => {
       });
     }
 
-    if (!process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
+    if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY && !process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
       return res.status(503).json({
         success: false,
         message: 'Services are down'
       });
     }
 
-    const prompt = `You are a nutrition extraction assistant.
-Analyze this food image and return ONLY a valid JSON object with this shape:
-{
-  "foodName": "Name of the food/dish",
-  "oilContent": {
-    "totalOil": "estimated total oil/fat content, e.g. 15g",
-    "oilType": "likely oil type",
-    "estimatedMl": number,
-    "calories": number
-  },
-  "fatBreakdown": {
-    "saturatedFat": "string",
-    "transFat": "string",
-    "polyunsaturatedFat": "string",
-    "monounsaturatedFat": "string"
-  },
-  "healthScore": number,
-  "healthTips": ["tip1", "tip2", "tip3"],
-  "servingSize": "string",
-  "cookingMethod": "string",
-  "isHealthy": boolean
-}`;
+    const prompt = `You are an advanced computer vision assistant integrated into a mobile app feature called "Scan Your Food".
 
-    const providerResult = await callOpenRouterWithFallback({
+Your ONLY responsibility is to analyze the given food image and extract structured visual insights.
+You MUST NOT perform any nutritional calculations, oil estimation, or assumptions beyond visual inference.
+
+PRIMARY OBJECTIVE
+From the input food image, identify:
+1) food name
+2) cooking method probabilities
+3) confidence score
+
+Return STRICT JSON output only.
+
+STEP 1: FOOD IDENTIFICATION
+- Identify the primary food item in the image.
+- If multiple items exist, select the most prominent or central item.
+- Use common Indian food names where applicable.
+- Output a single string in "food".
+
+STEP 2: COOKING METHOD CLASSIFICATION
+Estimate probability distribution across all four methods:
+- deep_fry
+- shallow_fry
+- air_fry
+- baked
+
+Rules:
+- Each value must be between 0 and 1.
+- Sum must equal exactly 1.0.
+- Do not assign equal probabilities unless truly uncertain.
+
+Visual cues:
+1) Surface texture:
+   - rough, bubbly, crispy -> deep fry likely
+   - smooth, dry -> baked or air fry
+   - slight oil patches -> shallow fry
+2) Color:
+   - dark golden to brown -> deep fry likely
+   - light golden -> fresh oil or baked
+   - pale -> baked or undercooked
+3) Oil shine:
+   - glossy -> deep fry bias
+   - matte -> air fry or baked bias
+4) Structure:
+   - puffy + crispy -> deep fry
+   - flat + dry -> baked
+   - slight oily patches -> shallow fry
+5) Background context (only if clearly visible):
+   - street setup -> deep fry bias
+   - kitchen/home -> mixed
+   - restaurant plating -> moderate
+
+STEP 3: CONFIDENCE SCORE
+Provide "confidence" between 0 and 1.
+
+Confidence guidance:
+- high (0.8 to 1.0): clear image, single item, strong indicators
+- medium (0.6 to 0.8): slight blur, mixed signals
+- low (<0.6): poor lighting, occlusion, overlapping foods
+
+Output template:
+{
+  "food": "string",
+  "cooking_method": {
+    "deep_fry": number,
+    "shallow_fry": number,
+    "air_fry": number,
+    "baked": number
+  },
+  "confidence": number
+}
+
+Validation:
+- valid JSON only
+- no extra fields
+- no missing fields
+- probabilities sum exactly to 1.0
+- confidence must be between 0 and 1`;
+
+    const providerResult = await callVisionProviderWithFallback({
       title: 'SwasthTel Food Oil Analyzer',
       payload: {
         model: 'google/gemini-2.0-flash-001',
@@ -801,11 +1069,13 @@ Analyze this food image and return ONLY a valid JSON object with this shape:
     });
 
     if (!providerResult.ok) {
-      console.error('[FoodAnalyzer] OpenRouter error:', providerResult.status, String(providerResult.text || '').slice(0, 300));
+      const providerMessage = extractProviderMessage(providerResult.text || '');
+      console.error('[FoodAnalyzer] Provider error:', providerResult.status, String(providerResult.text || '').slice(0, 300));
+      const statusCode = providerResult.status >= 400 && providerResult.status < 500 ? providerResult.status : 503;
 
-      return res.status(503).json({
+      return res.status(statusCode).json({
         success: false,
-        message: 'Services are down'
+        message: providerMessage || 'Services are down'
       });
     }
 
@@ -820,10 +1090,11 @@ Analyze this food image and return ONLY a valid JSON object with this shape:
     }
 
     const parsed = parseJsonObject(generatedText);
+    const normalized = normalizeFoodVisionOutput(parsed);
 
     return res.status(200).json({
       success: true,
-      data: parsed
+      data: normalized
     });
   } catch (error) {
     console.error('[FoodAnalyzer] Controller error:', error.message);
@@ -847,7 +1118,7 @@ exports.analyzeBarcodeImage = async (req, res, next) => {
       });
     }
 
-    if (!process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
+    if (!process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY && !process.env.OPENROUTER_OIL_SCAN_API_KEY && !process.env.OPENROUTER_API_KEY) {
       return res.status(503).json({
         success: false,
         message: 'Services are down'
@@ -900,7 +1171,7 @@ Swasth Index rules:
 - 0-30: poor, 31-55: moderate, 56-75: good, 76-100: excellent.
 - Always include at least 2 items in better_options with clear practical reasons.`;
 
-    const providerResult = await callOpenRouterWithFallback({
+    const providerResult = await callVisionProviderWithFallback({
       title: 'SwasthTel Barcode Scanner',
       payload: {
         model: 'google/gemini-2.0-flash-001',
@@ -924,11 +1195,13 @@ Swasth Index rules:
     });
 
     if (!providerResult.ok) {
-      console.error('[BarcodeAnalyzer] OpenRouter error:', providerResult.status, String(providerResult.text || '').slice(0, 300));
+      const providerMessage = extractProviderMessage(providerResult.text || '');
+      console.error('[BarcodeAnalyzer] Provider error:', providerResult.status, String(providerResult.text || '').slice(0, 300));
+      const statusCode = providerResult.status >= 400 && providerResult.status < 500 ? providerResult.status : 503;
 
-      return res.status(503).json({
+      return res.status(statusCode).json({
         success: false,
-        message: 'Services are down'
+        message: providerMessage || 'Services are down'
       });
     }
 

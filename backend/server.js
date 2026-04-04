@@ -43,9 +43,9 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-// Body parser
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Body parser (higher limit for base64 image scan payloads)
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
 // Logging
 if (process.env.NODE_ENV === 'development') {

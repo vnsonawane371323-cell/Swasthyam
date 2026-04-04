@@ -49,6 +49,13 @@ interface NutritionData {
   servingSize: string;
   cookingMethod: string;
   isHealthy: boolean;
+  confidenceScore?: number;
+  cookingMethodProbabilities?: {
+    deep_fry: number;
+    shallow_fry: number;
+    air_fry: number;
+    baked: number;
+  };
 }
 
 interface LogFormData {
@@ -68,6 +75,47 @@ const OIL_TYPES = [
 const MEAL_TYPES: Array<'Breakfast' | 'Lunch' | 'Snack' | 'Dinner'> = ['Breakfast', 'Lunch', 'Snack', 'Dinner'];
 
 const UNITS: Array<'grams' | 'bowls' | 'pieces'> = ['grams', 'bowls', 'pieces'];
+const MAX_BASE64_LENGTH = 7_500_000;
+
+type OilIntensity = 'Low' | 'Medium' | 'High';
+type OilReusability = 'Fresh' | 'Moderately Reused' | 'Highly Reused';
+type FoodSource = 'Home Cooked' | 'Restaurant' | 'Street Vendor';
+
+const OIL_INTENSITY_OPTIONS: OilIntensity[] = ['Low', 'Medium', 'High'];
+const OIL_REUSABILITY_OPTIONS: OilReusability[] = ['Fresh', 'Moderately Reused', 'Highly Reused'];
+const FOOD_SOURCE_OPTIONS: FoodSource[] = ['Home Cooked', 'Restaurant', 'Street Vendor'];
+
+const COOKING_MULTIPLIERS = {
+  deep_fry: 1.6,
+  shallow_fry: 1.2,
+  air_fry: 0.3,
+  baked: 0.2,
+};
+
+const OIL_INTENSITY_MULTIPLIERS: Record<OilIntensity, number> = {
+  Low: 0.85,
+  Medium: 1.0,
+  High: 1.3,
+};
+
+const OIL_REUSABILITY_MULTIPLIERS: Record<OilReusability, number> = {
+  Fresh: 1.0,
+  'Moderately Reused': 1.12,
+  'Highly Reused': 1.25,
+};
+
+const CONTEXT_MULTIPLIERS: Record<FoodSource, number> = {
+  'Home Cooked': 0.9,
+  Restaurant: 1.0,
+  'Street Vendor': 1.2,
+};
+
+const BASE_VALUES = {
+  samosa: { oilMl: 14, calories: 180 },
+  pakora: { oilMl: 10, calories: 150 },
+  poori: { oilMl: 8, calories: 120 },
+  default: { oilMl: 10, calories: 150 },
+};
 
 const parseOilAmountFromText = (text?: string) => {
   if (!text) return null;
@@ -82,6 +130,168 @@ const parseOilAmountFromText = (text?: string) => {
   return { amount, unit };
 };
 
+const toTitleCase = (value: string) => value
+  .split('_')
+  .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+  .join(' ');
+
+const round2 = (value: number) => Math.round(value * 100) / 100;
+
+const resolveBaseValues = (foodName: string) => {
+  const normalized = String(foodName || '').toLowerCase();
+
+  if (normalized.includes('samosa')) return BASE_VALUES.samosa;
+  if (normalized.includes('pakora')) return BASE_VALUES.pakora;
+  if (normalized.includes('poori')) return BASE_VALUES.poori;
+
+  return BASE_VALUES.default;
+};
+
+const deriveCookingMethodProbabilities = (nutritionData: NutritionData) => {
+  if (nutritionData.cookingMethodProbabilities) {
+    return nutritionData.cookingMethodProbabilities;
+  }
+
+  const method = String(nutritionData.cookingMethod || '').toLowerCase();
+  if (method.includes('deep')) {
+    return { deep_fry: 1, shallow_fry: 0, air_fry: 0, baked: 0 };
+  }
+  if (method.includes('shallow')) {
+    return { deep_fry: 0, shallow_fry: 1, air_fry: 0, baked: 0 };
+  }
+  if (method.includes('air')) {
+    return { deep_fry: 0, shallow_fry: 0, air_fry: 1, baked: 0 };
+  }
+  if (method.includes('baked')) {
+    return { deep_fry: 0, shallow_fry: 0, air_fry: 0, baked: 1 };
+  }
+
+  return { deep_fry: 0.4, shallow_fry: 0.3, air_fry: 0.2, baked: 0.1 };
+};
+
+const getToleranceFromConfidence = (confidenceScore: number) => {
+  if (confidenceScore > 0.8) return 0.1;
+  if (confidenceScore >= 0.6) return 0.2;
+  return 0.3;
+};
+
+const calculateStructuredEstimation = (
+  nutritionData: NutritionData,
+  oilIntensity: OilIntensity,
+  oilReusability: OilReusability,
+  foodSource: FoodSource
+) => {
+  const cookingProb = deriveCookingMethodProbabilities(nutritionData);
+  const confidenceScore = Math.max(0, Math.min(1, Number(nutritionData.confidenceScore ?? nutritionData.healthScore / 10) || 0));
+
+  const cookingMultiplier =
+    (cookingProb.deep_fry * COOKING_MULTIPLIERS.deep_fry) +
+    (cookingProb.shallow_fry * COOKING_MULTIPLIERS.shallow_fry) +
+    (cookingProb.air_fry * COOKING_MULTIPLIERS.air_fry) +
+    (cookingProb.baked * COOKING_MULTIPLIERS.baked);
+
+  const intensityMultiplier = OIL_INTENSITY_MULTIPLIERS[oilIntensity];
+  const reusabilityMultiplier = OIL_REUSABILITY_MULTIPLIERS[oilReusability];
+  const contextMultiplier = CONTEXT_MULTIPLIERS[foodSource];
+
+  const base = resolveBaseValues(nutritionData.foodName);
+
+  const finalOil = base.oilMl * cookingMultiplier * intensityMultiplier * reusabilityMultiplier * contextMultiplier;
+  const oilCalories = finalOil * 9;
+  const totalCalories = base.calories + oilCalories;
+
+  const tolerance = getToleranceFromConfidence(confidenceScore);
+
+  const minOil = finalOil * (1 - tolerance);
+  const maxOil = finalOil * (1 + tolerance);
+  const minCalories = totalCalories * (1 - tolerance);
+  const maxCalories = totalCalories * (1 + tolerance);
+
+  return {
+    confidenceScore,
+    cookingProb,
+    cookingMultiplier: round2(cookingMultiplier),
+    finalOilMl: round2(finalOil),
+    oilRange: {
+      min: round2(minOil),
+      max: round2(maxOil),
+    },
+    totalCalories: Math.round(totalCalories),
+    caloriesRange: {
+      min: Math.round(minCalories),
+      max: Math.round(maxCalories),
+    },
+  };
+};
+
+const mapScanResponseToNutritionData = (payload: any): NutritionData => {
+  if (payload?.foodName && payload?.oilContent) {
+    return {
+      foodName: payload.foodName,
+      oilContent: {
+        totalOil: payload.oilContent?.totalOil || '0ml',
+        oilType: payload.oilContent?.oilType || 'Vegetable Oil',
+        estimatedMl: Number(payload.oilContent?.estimatedMl) || 0,
+        calories: Number(payload.oilContent?.calories) || 0,
+      },
+      fatBreakdown: {
+        saturatedFat: payload.fatBreakdown?.saturatedFat || '0g',
+        transFat: payload.fatBreakdown?.transFat || '0g',
+        polyunsaturatedFat: payload.fatBreakdown?.polyunsaturatedFat || '0g',
+        monounsaturatedFat: payload.fatBreakdown?.monounsaturatedFat || '0g',
+      },
+      healthScore: Number(payload.healthScore) || 0,
+      healthTips: Array.isArray(payload.healthTips) && payload.healthTips.length
+        ? payload.healthTips
+        : ['Review the scan result and adjust oil amount manually before logging.'],
+      servingSize: payload.servingSize || '1 serving',
+      cookingMethod: payload.cookingMethod || 'Estimated',
+      isHealthy: Boolean(payload.isHealthy),
+      confidenceScore: 0.8,
+    };
+  }
+
+  const cookingMethodProb = payload?.cooking_method || {};
+  const rankedMethods = Object.entries(cookingMethodProb)
+    .filter((entry): entry is [string, number] => typeof entry[0] === 'string' && typeof entry[1] === 'number')
+    .sort((a, b) => b[1] - a[1]);
+
+  const topMethod = rankedMethods.length ? toTitleCase(rankedMethods[0][0]) : 'Estimated';
+  const confidence = Math.max(0, Math.min(1, Number(payload?.confidence) || 0));
+
+  return {
+    foodName: payload?.food || 'Detected food item',
+    oilContent: {
+      totalOil: 'Not estimated',
+      oilType: 'Vegetable Oil',
+      estimatedMl: 0,
+      calories: 0,
+    },
+    fatBreakdown: {
+      saturatedFat: 'N/A',
+      transFat: 'N/A',
+      polyunsaturatedFat: 'N/A',
+      monounsaturatedFat: 'N/A',
+    },
+    healthScore: Math.round(confidence * 10),
+    healthTips: [
+      'Perception-only scan mode is active.',
+      'Use manual log to enter oil amount for tracking.',
+      `Confidence: ${(confidence * 100).toFixed(0)}%`
+    ],
+    servingSize: 'Not estimated',
+    cookingMethod: topMethod,
+    isHealthy: confidence >= 0.7,
+    confidenceScore: confidence,
+    cookingMethodProbabilities: {
+      deep_fry: Number(cookingMethodProb.deep_fry) || 0,
+      shallow_fry: Number(cookingMethodProb.shallow_fry) || 0,
+      air_fry: Number(cookingMethodProb.air_fry) || 0,
+      baked: Number(cookingMethodProb.baked) || 0,
+    },
+  };
+};
+
 export function FoodOilAnalyzerScreen() {
   const navigation = useNavigation();
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -93,6 +303,9 @@ export function FoodOilAnalyzerScreen() {
   const [showLogModal, setShowLogModal] = useState(false);
   const [isLogging, setIsLogging] = useState(false);
   const [logSuccess, setLogSuccess] = useState(false);
+  const [oilIntensity, setOilIntensity] = useState<OilIntensity | null>(null);
+  const [oilReusability, setOilReusability] = useState<OilReusability | null>(null);
+  const [foodSource, setFoodSource] = useState<FoodSource | null>(null);
   const [logForm, setLogForm] = useState<LogFormData>({
     foodName: '',
     oilType: 'Vegetable Oil',
@@ -111,13 +324,16 @@ export function FoodOilAnalyzerScreen() {
       throw new Error(response.message || 'Food analysis failed');
     }
 
-    return response.data;
+    return mapScanResponseToNutritionData(response.data);
   };
 
   const pickImage = async (useCamera: boolean) => {
     try {
       setError(null);
       setNutritionData(null);
+      setOilIntensity(null);
+      setOilReusability(null);
+      setFoodSource(null);
 
       // Request permissions
       if (useCamera) {
@@ -139,19 +355,22 @@ export function FoodOilAnalyzerScreen() {
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
             aspect: [4, 3],
-            quality: 0.8,
+            quality: 0.55,
+            base64: true,
           })
         : ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
             allowsEditing: true,
             aspect: [4, 3],
-            quality: 0.8,
+            quality: 0.55,
+            base64: true,
           }));
 
       if (!result.canceled && result.assets[0]) {
-        const uri = result.assets[0].uri;
+        const asset = result.assets[0];
+        const uri = asset.uri;
         setImageUri(uri);
-        await analyzeFood(uri);
+        await analyzeFood(uri, asset.base64 || undefined);
       }
     } catch (err: any) {
       console.error('Image picker error:', err);
@@ -159,7 +378,7 @@ export function FoodOilAnalyzerScreen() {
     }
   };
 
-  const analyzeFood = async (uri: string) => {
+  const analyzeFood = async (uri: string, providedBase64?: string) => {
     setIsAnalyzing(true);
     setError(null);
 
@@ -167,7 +386,9 @@ export function FoodOilAnalyzerScreen() {
       // Convert image to base64
       let base64Image: string;
 
-      if (Platform.OS === 'web') {
+      if (providedBase64 && providedBase64.length) {
+        base64Image = providedBase64;
+      } else if (Platform.OS === 'web') {
         const response = await fetch(uri);
         const blob = await response.blob();
         base64Image = await new Promise<string>((resolve, reject) => {
@@ -189,6 +410,10 @@ export function FoodOilAnalyzerScreen() {
         });
       }
 
+      if (base64Image.length > MAX_BASE64_LENGTH) {
+        throw new Error('Image is too large. Please select a closer/cropped image and try again.');
+      }
+
       const data = await analyzeImageWithAI(base64Image);
       setNutritionData(data);
     } catch (err: any) {
@@ -204,7 +429,15 @@ export function FoodOilAnalyzerScreen() {
     setNutritionData(null);
     setError(null);
     setLogSuccess(false);
+    setOilIntensity(null);
+    setOilReusability(null);
+    setFoodSource(null);
   };
+
+  const hasRequiredInputs = Boolean(oilIntensity && oilReusability && foodSource);
+  const estimationResult = nutritionData && oilIntensity && oilReusability && foodSource
+    ? calculateStructuredEstimation(nutritionData, oilIntensity, oilReusability, foodSource)
+    : null;
 
   const getHealthScoreColor = (score: number) => {
     if (score >= 7) return '#22c55e';
@@ -214,11 +447,15 @@ export function FoodOilAnalyzerScreen() {
 
   const openLogModal = () => {
     if (nutritionData) {
+      const suggestedOilAmount = estimationResult?.finalOilMl || nutritionData.oilContent.estimatedMl || 0;
+      const safeOilType = OIL_TYPES.includes(nutritionData.oilContent.oilType)
+        ? nutritionData.oilContent.oilType
+        : 'Vegetable Oil';
       // Pre-fill form with detected data
       setLogForm({
         foodName: nutritionData.foodName,
-        oilType: nutritionData.oilContent.oilType || 'Vegetable Oil',
-        oilAmount: nutritionData.oilContent.estimatedMl || 0,
+        oilType: safeOilType,
+        oilAmount: suggestedOilAmount,
         quantity: 1,
         unit: 'pieces',
         mealType: getCurrentMealType(),
@@ -262,10 +499,13 @@ export function FoodOilAnalyzerScreen() {
       const parsedOil = parseOilAmountFromText(nutritionData?.oilContent?.totalOil);
       const payloadOilAmount = parsedOil?.amount || logForm.oilAmount;
       const payloadOilUnit: 'ml' | 'g' = parsedOil?.unit || 'ml';
+      const payloadOilType = OIL_TYPES.includes(logForm.oilType)
+        ? logForm.oilType
+        : 'Vegetable Oil';
 
       const response = await apiService.logOilConsumption({
         foodName: logForm.foodName,
-        oilType: logForm.oilType,
+        oilType: payloadOilType,
         oilAmount: payloadOilAmount,
         oilAmountUnit: payloadOilUnit,
         quantity: logForm.quantity,
@@ -305,11 +545,11 @@ export function FoodOilAnalyzerScreen() {
           }]
         );
       } else {
-        throw new Error('Failed to log');
+        throw new Error(response.message || 'Failed to log oil consumption');
       }
     } catch (err: any) {
       console.error('Log error:', err);
-      Alert.alert('Error', 'Failed to log oil consumption. Please try again.');
+      Alert.alert('Error', err?.message || 'Failed to log oil consumption. Please try again.');
     } finally {
       setIsLogging(false);
     }
@@ -587,111 +827,96 @@ export function FoodOilAnalyzerScreen() {
                   <Text style={styles.metaText}>{nutritionData.cookingMethod}</Text>
                 </View>
                 <View style={styles.metaItem}>
-                  <Ionicons name="resize" size={16} color="#6b7280" />
-                  <Text style={styles.metaText}>{nutritionData.servingSize}</Text>
+                  <Ionicons name="analytics" size={16} color="#6b7280" />
+                  <Text style={styles.metaText}>Confidence {(Math.max(0, Math.min(1, Number(nutritionData.confidenceScore ?? nutritionData.healthScore / 10) || 0)) * 100).toFixed(0)}%</Text>
                 </View>
               </View>
             </View>
 
-            {/* Oil Content Card */}
+            {/* Required Inputs Card */}
             <View style={styles.resultCard}>
               <View style={styles.resultHeader}>
-                <Ionicons name="water" size={24} color="#f59e0b" />
-                <Text style={styles.resultTitle}>Oil Content</Text>
+                <Ionicons name="list" size={24} color="#f59e0b" />
+                <Text style={styles.resultTitle}>Required Inputs</Text>
               </View>
-              <View style={styles.oilContentGrid}>
-                <View style={styles.oilItem}>
-                  <Text style={styles.oilValue}>{nutritionData.oilContent.totalOil}</Text>
-                  <Text style={styles.oilLabel}>Total Oil</Text>
-                </View>
-                <View style={styles.oilItem}>
-                  <Text style={styles.oilValue}>{nutritionData.oilContent.estimatedMl} ml</Text>
-                  <Text style={styles.oilLabel}>Volume</Text>
-                </View>
-                <View style={styles.oilItem}>
-                  <Text style={styles.oilValue}>{nutritionData.oilContent.calories}</Text>
-                  <Text style={styles.oilLabel}>Calories</Text>
-                </View>
-              </View>
-              <View style={styles.oilTypeRow}>
-                <Ionicons name="beaker" size={16} color="#6b7280" />
-                <Text style={styles.oilTypeText}>Oil Type: {nutritionData.oilContent.oilType}</Text>
-              </View>
-            </View>
 
-            {/* Fat Breakdown Card */}
-            <View style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <Ionicons name="pie-chart" size={24} color="#8b5cf6" />
-                <Text style={styles.resultTitle}>Fat Breakdown</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Oil Intensity</Text>
+                <View style={styles.optionRow}>
+                  {OIL_INTENSITY_OPTIONS.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.optionChip, oilIntensity === option && styles.optionChipSelected]}
+                      onPress={() => setOilIntensity(option)}
+                    >
+                      <Text style={[styles.optionChipText, oilIntensity === option && styles.optionChipTextSelected]}>{option}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
-              <View style={styles.fatGrid}>
-                <View style={styles.fatItem}>
-                  <View style={[styles.fatDot, { backgroundColor: '#ef4444' }]} />
-                  <Text style={styles.fatLabel}>Saturated</Text>
-                  <Text style={styles.fatValue}>{nutritionData.fatBreakdown.saturatedFat}</Text>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Oil Reusability</Text>
+                <View style={styles.optionRow}>
+                  {OIL_REUSABILITY_OPTIONS.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.optionChip, oilReusability === option && styles.optionChipSelected]}
+                      onPress={() => setOilReusability(option)}
+                    >
+                      <Text style={[styles.optionChipText, oilReusability === option && styles.optionChipTextSelected]}>{option}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-                <View style={styles.fatItem}>
-                  <View style={[styles.fatDot, { backgroundColor: '#f59e0b' }]} />
-                  <Text style={styles.fatLabel}>Trans Fat</Text>
-                  <Text style={styles.fatValue}>{nutritionData.fatBreakdown.transFat}</Text>
-                </View>
-                <View style={styles.fatItem}>
-                  <View style={[styles.fatDot, { backgroundColor: '#22c55e' }]} />
-                  <Text style={styles.fatLabel}>Polyunsat.</Text>
-                  <Text style={styles.fatValue}>{nutritionData.fatBreakdown.polyunsaturatedFat}</Text>
-                </View>
-                <View style={styles.fatItem}>
-                  <View style={[styles.fatDot, { backgroundColor: '#3b82f6' }]} />
-                  <Text style={styles.fatLabel}>Monounsat.</Text>
-                  <Text style={styles.fatValue}>{nutritionData.fatBreakdown.monounsaturatedFat}</Text>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Food Source</Text>
+                <View style={styles.optionRow}>
+                  {FOOD_SOURCE_OPTIONS.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.optionChip, foodSource === option && styles.optionChipSelected]}
+                      onPress={() => setFoodSource(option)}
+                    >
+                      <Text style={[styles.optionChipText, foodSource === option && styles.optionChipTextSelected]}>{option}</Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </View>
             </View>
 
-            {/* Health Score Card */}
+            {/* Final Structured Output */}
             <View style={styles.resultCard}>
               <View style={styles.resultHeader}>
-                <Ionicons name="heart" size={24} color="#ec4899" />
-                <Text style={styles.resultTitle}>Health Score</Text>
+                <Ionicons name="calculator" size={24} color="#8b5cf6" />
+                <Text style={styles.resultTitle}>Final Output</Text>
               </View>
-              <View style={styles.healthScoreContainer}>
-                <View style={[styles.healthScoreCircle, { borderColor: getHealthScoreColor(nutritionData.healthScore) }]}>
-                  <Text style={[styles.healthScoreValue, { color: getHealthScoreColor(nutritionData.healthScore) }]}>
-                    {nutritionData.healthScore}
+
+              {!hasRequiredInputs || !estimationResult ? (
+                <Text style={styles.pendingInputText}>Select all required inputs to calculate oil and calories.</Text>
+              ) : (
+                <View style={styles.structuredOutputContainer}>
+                  <Text style={styles.structuredLine}>Food: {nutritionData.foodName}</Text>
+                  <Text style={styles.structuredLine}>
+                    Cooking: Deep Fry ({estimationResult.cookingProb.deep_fry.toFixed(2)}), Shallow Fry ({estimationResult.cookingProb.shallow_fry.toFixed(2)}), Air Fry ({estimationResult.cookingProb.air_fry.toFixed(2)}), Baked ({estimationResult.cookingProb.baked.toFixed(2)})
                   </Text>
-                  <Text style={styles.healthScoreMax}>/10</Text>
+                  <Text style={styles.structuredLine}>Oil: {estimationResult.finalOilMl} ml</Text>
+                  <Text style={styles.structuredLine}>Range: {estimationResult.oilRange.min} - {estimationResult.oilRange.max} ml</Text>
+                  <Text style={styles.structuredLine}>Calories: {estimationResult.totalCalories} kcal</Text>
+                  <Text style={styles.structuredLine}>Range: {estimationResult.caloriesRange.min} - {estimationResult.caloriesRange.max} kcal</Text>
+                  <Text style={styles.structuredLine}>Confidence: {estimationResult.confidenceScore.toFixed(2)}</Text>
                 </View>
-                <View style={[styles.healthBadge, { backgroundColor: nutritionData.isHealthy ? '#dcfce7' : '#fef2f2' }]}>
-                  <Ionicons 
-                    name={nutritionData.isHealthy ? 'checkmark-circle' : 'alert-circle'} 
-                    size={16} 
-                    color={nutritionData.isHealthy ? '#22c55e' : '#ef4444'} 
-                  />
-                  <Text style={[styles.healthBadgeText, { color: nutritionData.isHealthy ? '#22c55e' : '#ef4444' }]}>
-                    {nutritionData.isHealthy ? 'Healthy Choice' : 'High Oil Content'}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Health Tips Card */}
-            <View style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                <Ionicons name="bulb" size={24} color="#f59e0b" />
-                <Text style={styles.resultTitle}>Health Tips</Text>
-              </View>
-              {nutritionData.healthTips.map((tip, index) => (
-                <View key={index} style={styles.tipItem}>
-                  <Ionicons name="checkmark-circle" size={18} color="#07A996" />
-                  <Text style={styles.tipText}>{tip}</Text>
-                </View>
-              ))}
+              )}
             </View>
 
             {/* Log to Oil Tracker Button */}
             {!logSuccess ? (
-              <TouchableOpacity style={styles.logToTrackerButton} onPress={openLogModal}>
+              <TouchableOpacity
+                style={[styles.logToTrackerButton, !estimationResult && styles.logButtonDisabled]}
+                onPress={openLogModal}
+                disabled={!estimationResult}
+              >
                 <LinearGradient
                   colors={['#07A996', '#059669']}
                   start={{ x: 0, y: 0 }}
@@ -701,7 +926,7 @@ export function FoodOilAnalyzerScreen() {
                   <Ionicons name="add-circle" size={24} color="#fff" />
                   <View style={styles.logToTrackerTextContainer}>
                     <Text style={styles.logToTrackerText}>Log to Oil Tracker</Text>
-                    <Text style={styles.logToTrackerSubtext}>Add {nutritionData.oilContent.estimatedMl}ml to your daily log</Text>
+                    <Text style={styles.logToTrackerSubtext}>Add {estimationResult ? estimationResult.finalOilMl : 0}ml to your daily log</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={24} color="#fff" />
                 </LinearGradient>
@@ -1001,6 +1226,42 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     color: '#4b5563',
+    lineHeight: 20,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  optionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#f3f4f6',
+  },
+  optionChipSelected: {
+    backgroundColor: '#1b4a5a',
+  },
+  optionChipText: {
+    fontSize: 13,
+    color: '#4b5563',
+    fontWeight: '500',
+  },
+  optionChipTextSelected: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  pendingInputText: {
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 20,
+  },
+  structuredOutputContainer: {
+    gap: 8,
+  },
+  structuredLine: {
+    fontSize: 14,
+    color: '#111827',
     lineHeight: 20,
   },
   resetButton: {
