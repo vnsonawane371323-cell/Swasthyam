@@ -24,7 +24,6 @@ interface MedicalReportAnalysis {
   risk_flags: string[];
   summary?: string;
   risk_level?: string;
-  recommended_total_calories?: number;
   nutrition_targets: {
     protein: number;
     fat: number;
@@ -69,11 +68,7 @@ interface MedicalReportAnalysis {
   }>;
 }
 
-interface MedicalReportUploadProps {
-  onAnalysisComplete?: (analysis: MedicalReportAnalysis) => void;
-}
-
-export function MedicalReportUpload({ onAnalysisComplete }: MedicalReportUploadProps) {
+export function MedicalReportUpload() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<any>(null);
@@ -141,9 +136,6 @@ export function MedicalReportUpload({ onAnalysisComplete }: MedicalReportUploadP
 
       if (response.success) {
         setAnalysis(response.data);
-        if (response.data) {
-          onAnalysisComplete?.(response.data as MedicalReportAnalysis);
-        }
         setShowResult(true);
         Alert.alert('Success', 'Report analyzed successfully!');
       } else {
