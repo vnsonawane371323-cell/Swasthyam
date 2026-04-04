@@ -7,7 +7,7 @@ if (Platform.OS !== 'web') {
 }
 
 // OpenRouter API Configuration
-const OPENROUTER_API_KEY = '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';
+const OPENROUTER_API_KEY = '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';
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Add console logging for debugging
