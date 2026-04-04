@@ -140,21 +140,39 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
         : 0;
   const dailyConsumedCal = Math.round(dailyConsumption * 9);
   const resolvedOilConsumedCal = dailyConsumedCal > 0 ? dailyConsumedCal : Math.max(0, Math.round(selectedDayCalories));
-  const resolvedTotalConsumedCal = Math.max(0, Math.round(consumedCalories));
+  
+  // NEW FORMULA FOR TOTAL CALORIES
+  // Calculate consumed calories from entries
+  const entries = Array.isArray(weeklyData) ? weeklyData : [];
+  const selectedDayEntry = entries.find(
+    (item: any) => item.date === new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short' })
+  );
+  const consumedCaloriesFromEntries = selectedDayEntry?.calories || consumedCalories || 0;
+  const resolvedTotalConsumedCal = Math.max(0, Math.round(consumedCaloriesFromEntries));
+  
   const oilFillPercent =
     effectiveDailyLimitCal > 0
       ? Math.min((resolvedOilConsumedCal / effectiveDailyLimitCal) * 100, 100)
       : 0;
+  
+  // Total calories fill percent = (consumed / goal) * 100, capped at 100
   const totalCaloriesFillPercent =
     totalCalories > 0
-      ? Math.min((resolvedTotalConsumedCal / totalCalories) * 100, 100)
+      ? Math.min(100, (resolvedTotalConsumedCal / totalCalories) * 100)
+      : 0;
+  
+  // Oil percent = (oilCalories / totalConsumed) * 100
+  const oilPercent =
+    resolvedTotalConsumedCal > 0
+      ? (resolvedOilConsumedCal / resolvedTotalConsumedCal) * 100
       : 0;
 
-  console.log('📊 [MobileHome] Fill Percent Calculation:');
+  console.log('📊 [MobileHome] Updated Calculation:');
   console.log('  - totalCalories (goal):', totalCalories);
-  console.log('  - consumedCalories (state):', consumedCalories);
+  console.log('  - consumedCaloriesFromEntries:', consumedCaloriesFromEntries);
   console.log('  - resolvedTotalConsumedCal:', resolvedTotalConsumedCal);
   console.log('  - totalCaloriesFillPercent:', totalCaloriesFillPercent, '%');
+  console.log('  - oilPercent:', oilPercent, '%');
   const weeklyMaxCalories = weeklyData.reduce((max, point) => Math.max(max, point.calories), 0);
   const chartMaxCal = Math.max(effectiveDailyLimitCal * 1.2, weeklyMaxCalories * 1.1, 1);
 
