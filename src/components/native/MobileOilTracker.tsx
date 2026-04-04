@@ -20,6 +20,7 @@ import { Progress } from './Progress';
 import { calculateSwasthaIndex } from '../../utils/swasthaIndex';
 import { searchFood, calculateOilAmount, FoodItem } from '../../data/foodDatabase';
 import apiService from '../../services/api';
+import { getWeightData } from '../../services/iotService';
 import { notificationService } from '../../services/notificationService';
 import { t } from '../../i18n';
 
@@ -65,6 +66,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
     status: 'connected' | 'disconnected' | 'pairing';
     lastSync: string;
     batteryLevel?: number;
+    latestReading?: number;
   }>>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isPairing, setIsPairing] = useState(false);
@@ -137,48 +139,86 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
   }, []);
 
   const loadIotDevices = async () => {
-    // Simulated IoT devices - in production, this would fetch from backend
     try {
-      // Mock data for demonstration - replace with actual API call
-      const mockDevices = [
-        {
-          id: 'iot-001',
-          name: 'Smart Oil Dispenser',
-          type: 'oil_dispenser',
-          status: 'connected' as const,
-          lastSync: new Date().toISOString(),
-          batteryLevel: 85,
-        },
-      ];
-      setIotDevices(mockDevices);
+      const reading = await getWeightData();
+      const deviceId = String(reading?.deviceId || 'ESP32-UNKNOWN');
+      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const isReachable = Number.isFinite(readingValue) && readingValue > 0;
+
+      setIotDevices([{
+        id: deviceId,
+        name: 'ESP32 Smart Oil Tracker',
+        type: 'oil_dispenser',
+        status: isReachable ? 'connected' : 'disconnected',
+        lastSync: String(reading?.timestamp || new Date().toISOString()),
+        batteryLevel: Number.isFinite(Number(reading?.batteryLevel)) ? Number(reading?.batteryLevel) : undefined,
+        latestReading: Number.isFinite(readingValue) ? Math.round(readingValue * 10) / 10 : undefined,
+      }]);
     } catch (error) {
       console.error('Error loading IoT devices:', error);
+      setIotDevices([]);
     }
   };
 
   const handleScanForDevices = async () => {
-    setIsScanning(true);
-    // Simulate scanning for devices
-    setTimeout(() => {
+    try {
+      setIsScanning(true);
+      const reading = await getWeightData();
+      const deviceId = String(reading?.deviceId || 'ESP32-UNKNOWN');
+      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const isReachable = Number.isFinite(readingValue) && readingValue > 0;
+
+      if (isReachable) {
+        setIotDevices([{
+          id: deviceId,
+          name: 'ESP32 Smart Oil Tracker',
+          type: 'oil_dispenser',
+          status: 'connected',
+          lastSync: String(reading?.timestamp || new Date().toISOString()),
+          batteryLevel: Number.isFinite(Number(reading?.batteryLevel)) ? Number(reading?.batteryLevel) : undefined,
+          latestReading: Math.round(readingValue * 10) / 10,
+        }]);
+        Alert.alert('Scan Complete', 'ESP32 device found and connected successfully.');
+      } else {
+        Alert.alert('Scan Complete', 'No reachable ESP32 device found. Ensure device and backend are online.');
+      }
+    } catch (error) {
+      Alert.alert('Scan Failed', 'Unable to reach ESP32 or backend. Check network and try again.');
+    } finally {
       setIsScanning(false);
-      Alert.alert(
-        'Scan Complete',
-        'Found 1 nearby device. Tap to pair.',
-        [{ text: 'OK' }]
-      );
-    }, 3000);
+    }
   };
 
   const handlePairDevice = async (deviceId: string) => {
-    setIsPairing(true);
-    // Simulate pairing process
-    setTimeout(() => {
-      setIsPairing(false);
-      setIotDevices(prev => prev.map(d => 
-        d.id === deviceId ? { ...d, status: 'connected' as const } : d
+    try {
+      setIsPairing(true);
+      const reading = await getWeightData();
+      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const isReachable = Number.isFinite(readingValue) && readingValue > 0;
+
+      if (!isReachable) {
+        Alert.alert('Pairing Failed', 'Device not reachable. Keep ESP32 powered on and connected to Wi-Fi.');
+        return;
+      }
+
+      setIotDevices(prev => prev.map(d =>
+        d.id === deviceId
+          ? {
+              ...d,
+              status: 'connected' as const,
+              lastSync: String(reading?.timestamp || new Date().toISOString()),
+              batteryLevel: Number.isFinite(Number(reading?.batteryLevel)) ? Number(reading?.batteryLevel) : d.batteryLevel,
+              latestReading: Math.round(readingValue * 10) / 10,
+            }
+          : d
       ));
-      Alert.alert('Success', 'Device paired successfully!');
-    }, 2000);
+
+      Alert.alert('Success', 'ESP32 device paired and connected successfully.');
+    } catch (error) {
+      Alert.alert('Pairing Failed', 'Unable to pair with ESP32 right now. Please retry.');
+    } finally {
+      setIsPairing(false);
+    }
   };
 
   const handleDisconnectDevice = (deviceId: string) => {
@@ -203,17 +243,24 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
   const handleSyncDevice = async (deviceId: string) => {
     try {
       setIsLoading(true);
-      // Simulate syncing data from device
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const reading = await getWeightData();
+      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
       
       // Update last sync time
       setIotDevices(prev => prev.map(d => 
-        d.id === deviceId ? { ...d, lastSync: new Date().toISOString() } : d
+        d.id === deviceId
+          ? {
+              ...d,
+              lastSync: String(reading?.timestamp || new Date().toISOString()),
+              latestReading: Number.isFinite(readingValue) ? Math.round(readingValue * 10) / 10 : d.latestReading,
+              batteryLevel: Number.isFinite(Number(reading?.batteryLevel)) ? Number(reading?.batteryLevel) : d.batteryLevel,
+            }
+          : d
       ));
       
       // Reload entries to show any new data
       await loadEntries();
-      Alert.alert('Sync Complete', 'Oil consumption data synced from device');
+      Alert.alert('Sync Complete', `Latest ESP32 reading: ${Number.isFinite(readingValue) ? Math.round(readingValue * 10) / 10 : 0}`);
     } catch (error) {
       Alert.alert('Error', 'Failed to sync device data');
     } finally {
@@ -691,6 +738,11 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
                         <Text style={styles.iotDeviceLastSync}>
                           Last sync: {new Date(device.lastSync).toLocaleString()}
                         </Text>
+                        {typeof device.latestReading === 'number' && (
+                          <Text style={styles.iotDeviceLastSync}>
+                            Latest sensor reading: {device.latestReading}
+                          </Text>
+                        )}
                       </View>
                       
                       <View style={styles.iotDeviceActions}>
@@ -752,7 +804,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
                     {isScanning ? 'Scanning...' : 'Scan for Devices'}
                   </Text>
                   <Text style={styles.scanButtonSubtext}>
-                    Find nearby smart oil dispensers
+                    Discover ESP32 tracker and connect
                   </Text>
                 </View>
                 {isScanning ? (
