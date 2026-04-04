@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Card, CardContent } from './Card';
 import { Button } from './Button';
 import { t } from '../../i18n';
+import { getWeightData } from '../../services/iotService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -76,6 +77,8 @@ export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
   const [oilAmount, setOilAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedReading, setSelectedReading] = useState<string | null>(null);
+  const [readingTimestamp, setReadingTimestamp] = useState<string>('');
+  const [isSyncingReading, setIsSyncingReading] = useState(false);
   
   // Automatic readings from IoT device (mock data)
   const [automaticReadings] = useState([
@@ -205,6 +208,36 @@ export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
         },
       ]
     );
+  };
+
+  const handleSyncAndRecord = async () => {
+    try {
+      setIsSyncingReading(true);
+      const reading = await getWeightData();
+      
+      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const timestamp = String(reading?.timestamp || new Date().toISOString());
+      
+      if (!Number.isFinite(readingValue) || readingValue <= 0) {
+        Alert.alert('Sync Failed', 'Could not retrieve oil reading from device. Ensure device is connected.');
+        return;
+      }
+
+      // Auto-fill form with synced reading
+      setOilAmount(Math.round(readingValue * 10) / 10 + '');
+      setReadingTimestamp(timestamp);
+      setShowLogForm(true);
+      
+      Alert.alert(
+        'Reading Synced',
+        `Oil amount: ${Math.round(readingValue * 10) / 10}ml\nTimestamp: ${new Date(timestamp).toLocaleString()}`,
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert('Sync Error', 'Failed to sync reading from ESP32 device. Please check connection.');
+    } finally {
+      setIsSyncingReading(false);
+    }
   };
 
   if (!device) {
@@ -430,6 +463,34 @@ export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
           </CardContent>
         </Card>
 
+        {/* Sync and Record Button */}
+        <TouchableOpacity
+          style={styles.syncRecordButton}
+          onPress={handleSyncAndRecord}
+          disabled={isSyncingReading}
+        >
+          <View style={styles.syncRecordButtonContent}>
+            <View style={styles.syncRecordButtonIcon}>
+              <Ionicons 
+                name={isSyncingReading ? "radio" : "sync"} 
+                size={28} 
+                color="#ffffff" 
+              />
+            </View>
+            <View style={styles.syncRecordButtonTextContainer}>
+              <Text style={styles.syncRecordButtonText}>
+                {isSyncingReading ? 'Syncing...' : 'Sync & Record'}
+              </Text>
+              <Text style={styles.syncRecordButtonSubtext}>Fetch latest reading with timestamp</Text>
+            </View>
+            <Ionicons 
+              name="chevron-forward" 
+              size={24} 
+              color="rgba(255,255,255,0.8)" 
+            />
+          </View>
+        </TouchableOpacity>
+
         {/* Log Oil Button */}
         <TouchableOpacity
           style={styles.logOilButton}
@@ -629,11 +690,24 @@ export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
                 />
               </View>
 
+              {/* Timestamp Info - if from sync */}
+              {readingTimestamp && (
+                <View style={styles.timestampInfo}>
+                  <Ionicons name="time" size={16} color="#3b82f6" />
+                  <Text style={styles.timestampText}>
+                    Recorded at: {new Date(readingTimestamp).toLocaleString()}
+                  </Text>
+                </View>
+              )}
+
               {/* Submit Button */}
               <View style={styles.formButtons}>
                 <Button
                   variant="outline"
-                  onPress={() => setShowLogForm(false)}
+                  onPress={() => {
+                    setShowLogForm(false);
+                    setReadingTimestamp('');
+                  }}
                   style={styles.cancelButton}
                 >
                   Cancel
@@ -1032,6 +1106,43 @@ const styles = StyleSheet.create({
     color: '#040707',
     marginTop: 4,
   },
+  syncRecordButton: {
+    marginBottom: 12,
+    backgroundColor: '#059669',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  syncRecordButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  syncRecordButtonIcon: {
+    width: 56,
+    height: 56,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  syncRecordButtonTextContainer: {
+    flex: 1,
+  },
+  syncRecordButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  syncRecordButtonSubtext: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 13,
+  },
   logOilButton: {
     marginBottom: 16,
     backgroundColor: '#1b4a5a',
@@ -1196,6 +1307,20 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     flex: 1,
+  },
+  timestampInfo: {
+    backgroundColor: '#f0fdf4',
+    borderLeftWidth: 4,
+    borderLeftColor: '#059669',
+    padding: 12,
+    marginBottom: 16,
+    borderRadius: 6,
+  },
+  timestampInfoText: {
+    fontSize: 13,
+    color: '#047857',
+    fontWeight: '500',
+    includeFontPadding: false,
   },
   deviceInfoCard: {
     marginBottom: 16,
