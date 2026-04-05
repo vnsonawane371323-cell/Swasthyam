@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { Card, CardContent } from './Card';
 import { Button } from './Button';
 import { t } from '../../i18n';
 import { getWeightData } from '../../services/iotService';
+import { useFocusEffect } from '@react-navigation/native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -42,12 +43,21 @@ interface OilUsageData {
   amount: number;
 }
 
+const JAR_WEIGHT_G = 262;
+const OIL_DENSITY_G_PER_ML = 0.91;
+
+const toRemainingMlFromRawReading = (rawReading: number, capacityMl: number): number => {
+  const netOilGrams = Math.max(0, rawReading - JAR_WEIGHT_G);
+  const remainingMl = netOilGrams / OIL_DENSITY_G_PER_ML;
+  return Math.max(0, Math.min(capacityMl, Math.round(remainingMl * 10) / 10));
+};
+
 export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
   const device = route?.params?.device;
   
   // Oil dispenser state
-  const [totalCapacity] = useState(1000); // ml
-  const [currentLevel, setCurrentLevel] = useState(750); // ml remaining
+  const [totalCapacity] = useState(500); // ml
+  const [currentLevel, setCurrentLevel] = useState(375); // ml remaining
   const [oilConsumedToday, setOilConsumedToday] = useState(45); // ml consumed today
   const [oilConsumedWeek, setOilConsumedWeek] = useState(280); // ml consumed this week
   
@@ -177,6 +187,17 @@ export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
       Alert.alert('Error', 'Please fill all required fields');
       return;
     }
+
+    const loggedMl = Number(oilAmount);
+    if (!Number.isFinite(loggedMl) || loggedMl <= 0) {
+      Alert.alert('Error', 'Please enter a valid oil amount');
+      return;
+    }
+
+    const nextLevel = Math.max(0, Math.round((currentLevel - loggedMl) * 10) / 10);
+    setCurrentLevel(nextLevel);
+    setOilConsumedToday(prev => Math.round((prev + loggedMl) * 10) / 10);
+    setOilConsumedWeek(prev => Math.round((prev + loggedMl) * 10) / 10);
     
     Alert.alert(
       'Success',
@@ -223,14 +244,17 @@ export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
         return;
       }
 
+      const remainingMl = toRemainingMlFromRawReading(readingValue, totalCapacity);
+      setCurrentLevel(remainingMl);
+
       // Auto-fill form with synced reading
-      setOilAmount(Math.round(readingValue * 10) / 10 + '');
+      setOilAmount(Math.round(remainingMl * 10) / 10 + '');
       setReadingTimestamp(timestamp);
       setShowLogForm(true);
       
       Alert.alert(
         'Reading Synced',
-        `Oil amount: ${Math.round(readingValue * 10) / 10}ml\nTimestamp: ${new Date(timestamp).toLocaleString()}`,
+        `Raw reading: ${Math.round(readingValue * 10) / 10}g\nRemaining oil: ${remainingMl.toFixed(1)}ml\nTimestamp: ${new Date(timestamp).toLocaleString()}`,
         [{ text: 'OK' }]
       );
     } catch (error) {
@@ -239,6 +263,25 @@ export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
       setIsSyncingReading(false);
     }
   };
+
+  const refreshJarLevelSilently = useCallback(async () => {
+    try {
+      const reading = await getWeightData();
+      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      if (!Number.isFinite(readingValue) || readingValue <= 0) return;
+
+      const remainingMl = toRemainingMlFromRawReading(readingValue, totalCapacity);
+      setCurrentLevel(remainingMl);
+    } catch (error) {
+      // Silent refresh should not interrupt UX.
+    }
+  }, [totalCapacity]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshJarLevelSilently();
+    }, [refreshJarLevelSilently])
+  );
 
   if (!device) {
     return (
@@ -331,19 +374,19 @@ export function IoTDeviceDetail({ navigation, route }: IoTDeviceDetailProps) {
                   <View style={styles.levelMarkers}>
                     <View style={styles.markerRow}>
                       <View style={styles.marker} />
-                      <Text style={styles.markerText}>1000ml</Text>
-                    </View>
-                    <View style={styles.markerRow}>
-                      <View style={styles.marker} />
-                      <Text style={styles.markerText}>750ml</Text>
-                    </View>
-                    <View style={styles.markerRow}>
-                      <View style={styles.marker} />
                       <Text style={styles.markerText}>500ml</Text>
                     </View>
                     <View style={styles.markerRow}>
                       <View style={styles.marker} />
+                      <Text style={styles.markerText}>375ml</Text>
+                    </View>
+                    <View style={styles.markerRow}>
+                      <View style={styles.marker} />
                       <Text style={styles.markerText}>250ml</Text>
+                    </View>
+                    <View style={styles.markerRow}>
+                      <View style={styles.marker} />
+                      <Text style={styles.markerText}>125ml</Text>
                     </View>
                   </View>
                 </View>

@@ -43,6 +43,38 @@ interface OilEntry {
   consumedAt?: string;
 }
 
+const getLocalDateKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// IoT Jar Constants
+const JAR_WEIGHT = 262; // grams (empty jar weight)
+const TOTAL_CAPACITY = 500; // ml capacity (500ml jar when filled)
+const OIL_DENSITY = 0.91; // g/ml - density of cooking oil
+const MAX_OIL_WEIGHT = TOTAL_CAPACITY * OIL_DENSITY; // 455g - max net oil weight when jar is full
+
+// Calculate jar fill percentage (0-100%) based on net oil weight
+const getFillPercentage = (netOilReading: number): number => {
+  return Math.min(
+    100,
+    Math.max(0, (netOilReading / MAX_OIL_WEIGHT) * 100)
+  );
+};
+
+// Calculate remaining ml of oil in jar
+const getRemainingMl = (netOilReading: number): number => {
+  const fillPercent = getFillPercentage(netOilReading);
+  return Math.round((fillPercent / 100) * TOTAL_CAPACITY * 10) / 10;
+};
+
+// Subtract jar weight from raw reading
+const getNetOilReading = (rawReading: number): number => {
+  return Math.max(0, rawReading - JAR_WEIGHT);
+};
+
 export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
   const [showLogEntry, setShowLogEntry] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -116,11 +148,11 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
     return recent;
   }, [entries]);
 
-  const selectedDay = logDate.toISOString().split('T')[0];
+  const selectedDay = getLocalDateKey(logDate);
   // Calculate selected day's total from entries
   const dayEntries = entries.filter(entry => {
     const entryDate = entry.consumedAt ? new Date(entry.consumedAt) : new Date(entry.date);
-    const entryDay = isNaN(entryDate.getTime()) ? entry.date : entryDate.toISOString().split('T')[0];
+    const entryDay = isNaN(entryDate.getTime()) ? entry.date : getLocalDateKey(entryDate);
     return entryDay === selectedDay;
   });
   const dayTotal = dayEntries.reduce((sum, entry) => sum + entry.amount, 0);
@@ -155,8 +187,9 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
     try {
       const reading = await getWeightData();
       const deviceId = String(reading?.deviceId || 'ESP32-UNKNOWN');
-      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
-      const isReachable = Number.isFinite(readingValue) && readingValue > 0;
+      const rawReadingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const netOilReading = getNetOilReading(rawReadingValue);
+      const isReachable = Number.isFinite(netOilReading) && netOilReading > 0;
 
       setIotDevices([{
         id: deviceId,
@@ -165,7 +198,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
         status: isReachable ? 'connected' : 'disconnected',
         lastSync: String(reading?.timestamp || new Date().toISOString()),
         batteryLevel: Number.isFinite(Number(reading?.batteryLevel)) ? Number(reading?.batteryLevel) : undefined,
-        latestReading: Number.isFinite(readingValue) ? Math.round(readingValue * 10) / 10 : undefined,
+        latestReading: Number.isFinite(netOilReading) ? Math.round(netOilReading * 10) / 10 : undefined,
       }]);
     } catch (error) {
       console.error('Error loading IoT devices:', error);
@@ -178,8 +211,9 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
       setIsScanning(true);
       const reading = await getWeightData();
       const deviceId = String(reading?.deviceId || 'ESP32-UNKNOWN');
-      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
-      const isReachable = Number.isFinite(readingValue) && readingValue > 0;
+      const rawReadingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const netOilReading = getNetOilReading(rawReadingValue);
+      const isReachable = Number.isFinite(netOilReading) && netOilReading > 0;
 
       if (isReachable) {
         setIotDevices([{
@@ -189,7 +223,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
           status: 'connected',
           lastSync: String(reading?.timestamp || new Date().toISOString()),
           batteryLevel: Number.isFinite(Number(reading?.batteryLevel)) ? Number(reading?.batteryLevel) : undefined,
-          latestReading: Math.round(readingValue * 10) / 10,
+          latestReading: Math.round(netOilReading * 10) / 10,
         }]);
         Alert.alert('Scan Complete', 'ESP32 device found and connected successfully.');
       } else {
@@ -206,8 +240,9 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
     try {
       setIsPairing(true);
       const reading = await getWeightData();
-      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
-      const isReachable = Number.isFinite(readingValue) && readingValue > 0;
+      const rawReadingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const netOilReading = getNetOilReading(rawReadingValue);
+      const isReachable = Number.isFinite(netOilReading) && netOilReading > 0;
 
       if (!isReachable) {
         Alert.alert('Pairing Failed', 'Device not reachable. Keep ESP32 powered on and connected to Wi-Fi.');
@@ -221,7 +256,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
               status: 'connected' as const,
               lastSync: String(reading?.timestamp || new Date().toISOString()),
               batteryLevel: Number.isFinite(Number(reading?.batteryLevel)) ? Number(reading?.batteryLevel) : d.batteryLevel,
-              latestReading: Math.round(readingValue * 10) / 10,
+              latestReading: Math.round(netOilReading * 10) / 10,
             }
           : d
       ));
@@ -257,7 +292,8 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
     try {
       setIsLoading(true);
       const reading = await getWeightData();
-      const readingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const rawReadingValue = Number(reading?.oilAmount ?? reading?.weight ?? 0);
+      const netOilReading = getNetOilReading(rawReadingValue);
       
       // Update last sync time
       setIotDevices(prev => prev.map(d => 
@@ -265,7 +301,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
           ? {
               ...d,
               lastSync: String(reading?.timestamp || new Date().toISOString()),
-              latestReading: Number.isFinite(readingValue) ? Math.round(readingValue * 10) / 10 : d.latestReading,
+              latestReading: Number.isFinite(netOilReading) ? Math.round(netOilReading * 10) / 10 : d.latestReading,
               batteryLevel: Number.isFinite(Number(reading?.batteryLevel)) ? Number(reading?.batteryLevel) : d.batteryLevel,
             }
           : d
@@ -273,7 +309,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
       
       // Reload entries to show any new data
       await loadEntries();
-      Alert.alert('Sync Complete', `Latest ESP32 reading: ${Number.isFinite(readingValue) ? Math.round(readingValue * 10) / 10 : 0}`);
+      Alert.alert('Sync Complete', `Latest ESP32 reading: ${Number.isFinite(netOilReading) ? Math.round(netOilReading * 10) / 10 : 0}g (after jar weight)`);
     } catch (error) {
       Alert.alert('Error', 'Failed to sync device data');
     } finally {
@@ -340,7 +376,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
   const loadEntries = async () => {
     try {
       setIsLoading(true);
-      const dateOnly = logDate.toISOString().split('T')[0];
+      const dateOnly = getLocalDateKey(logDate);
       
       // Fetch personalized oil status
       const statusResponse = await apiService.getUserOilStatus(dateOnly);
@@ -469,7 +505,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
       const scaledTotalCalories = selectedFood.totalCalories ? Math.round(selectedFood.totalCalories * scalingFactor) : 0;
       const scaledOilCalories = selectedFood.oilCalories ? Math.round(selectedFood.oilCalories * scalingFactor) : 0;
       
-      const dateOnly = logDate.toISOString().split('T')[0];
+      const dateOnly = getLocalDateKey(logDate);
       const consumedAt = `${dateOnly}T12:00:00Z`;
 
       // Group logging
@@ -644,7 +680,7 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
       }
 
       const analysis = analysisResponse.data;
-      const dateOnly = logDate.toISOString().split('T')[0];
+      const dateOnly = getLocalDateKey(logDate);
       const consumedAt = `${dateOnly}T12:00:00Z`;
 
       const logResponse = await apiService.logOilConsumption({
@@ -671,6 +707,24 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
         feedback: analysis.feedback,
         suggestion: analysis.suggestion,
       });
+
+      // Optimistically update jar level in UI after logging consumption.
+      const consumedMl = Number(analysis.final_adjusted_volume_ml) || 0;
+      const consumedGrams = consumedMl * OIL_DENSITY;
+      if (consumedGrams > 0) {
+        setIotDevices(prev =>
+          prev.map(d => {
+            if (d.id !== primaryDevice?.id || typeof d.latestReading !== 'number') {
+              return d;
+            }
+
+            return {
+              ...d,
+              latestReading: Math.max(0, Math.round((d.latestReading - consumedGrams) * 10) / 10),
+            };
+          })
+        );
+      }
 
       await loadEntries();
       Alert.alert(
@@ -828,9 +882,33 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
                           Last sync: {new Date(device.lastSync).toLocaleString()}
                         </Text>
                         {typeof device.latestReading === 'number' && (
-                          <Text style={styles.iotDeviceLastSync}>
-                            Latest sensor reading: {device.latestReading}
-                          </Text>
+                          <>
+                            <Text style={styles.iotDeviceLastSync}>
+                              Latest sensor reading: {device.latestReading}g (net oil)
+                            </Text>
+                            <Text style={styles.iotDeviceLastSync}>
+                              Jar fill: {getFillPercentage(device.latestReading).toFixed(1)}%
+                            </Text>
+                            {/* Visual Jar Fill Indicator */}
+                            <View style={styles.jarFillContainer}>
+                              <View style={styles.jarFillBackground}>
+                                <View 
+                                  style={[
+                                    styles.jarFillBar,
+                                    { 
+                                      height: `${getFillPercentage(device.latestReading)}%`,
+                                      backgroundColor: getFillPercentage(device.latestReading) > 80 ? '#ef4444' : 
+                                                       getFillPercentage(device.latestReading) > 50 ? '#f5a623' : 
+                                                       '#10b981'
+                                    }
+                                  ]}
+                                />
+                              </View>
+                              <Text style={styles.jarFillLabel}>
+                                {getRemainingMl(device.latestReading)}ml remaining (out of {TOTAL_CAPACITY}ml)
+                              </Text>
+                            </View>
+                          </>
                         )}
                       </View>
                       
@@ -955,7 +1033,8 @@ export function MobileOilTracker({ navigation, route }: MobileOilTrackerProps) {
                   <Text style={styles.iotDeviceLastSync}>
                     {(() => {
                       const reading = iotDevices.find(d => d.status === 'connected' && typeof d.latestReading === 'number')?.latestReading;
-                      return typeof reading === 'number' ? `${reading} (${iotReadingInputType === 'weight' ? 'grams' : 'ml'})` : 'No synced reading available';
+                      const fillPct = typeof reading === 'number' ? getFillPercentage(reading).toFixed(1) : 0;
+                      return typeof reading === 'number' ? `${reading}g (${fillPct}% filled)` : 'No synced reading available';
                     })()}
                   </Text>
                 </View>
@@ -2178,6 +2257,32 @@ const styles = StyleSheet.create({
   iotDeviceLastSync: {
     fontSize: 12,
     color: '#9ca3af',
+    marginBottom: 8,
+  },
+  jarFillContainer: {
+    marginTop: 12,
+    marginBottom: 12,
+  },
+  jarFillBackground: {
+    height: 80,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    justifyContent: 'flex-end',
+  },
+  jarFillBar: {
+    width: '100%',
+    borderRadius: 10,
+    transition: 'all 0.3s ease',
+  },
+  jarFillLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1b4a5a',
+    textAlign: 'center',
+    marginTop: 8,
   },
   iotDeviceActions: {
     flexDirection: 'row',

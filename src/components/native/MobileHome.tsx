@@ -136,8 +136,11 @@ export function MobileHome({ language = 'en' }: MobileHomeProps) {
   const [currentAvg, setCurrentAvg] = useState(0);
 
   const getDateKey = (date: Date) => {
-    // Keep date key format consistent with Oil Tracker API usage.
-    return date.toISOString().split('T')[0];
+    // Use local calendar date to avoid UTC boundary shifts.
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const effectiveDailyLimitCal =
